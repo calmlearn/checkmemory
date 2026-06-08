@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { BookOpen, FileText, BarChart3 } from "lucide-react"
+import ThemeSwitcher from "@/components/ThemeSwitcher"
 
 const navItems = [
   { href: "/", label: "我的文档", icon: FileText },
@@ -41,6 +42,9 @@ export default function Navbar() {
               </Link>
             )
           })}
+          <div className="ml-2 border-l pl-2 border-border">
+            <ThemeSwitcher />
+          </div>
         </nav>
       </div>
     </header>

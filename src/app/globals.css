@@ -83,6 +83,76 @@
   --sidebar-ring: oklch(0.55 0.15 250);
 }
 
+/* ===== 主题色切换 ===== */
+
+/* 清新绿 */
+html[data-theme="green"] {
+  --primary: oklch(0.55 0.17 145);
+  --ring: oklch(0.55 0.17 145);
+  --accent: oklch(0.9 0.06 145);
+  --accent-foreground: oklch(0.3 0.08 145);
+  --chart-1: oklch(0.6 0.18 145);
+  --chart-2: oklch(0.7 0.12 145);
+  --chart-3: oklch(0.5 0.12 160);
+  --chart-4: oklch(0.65 0.1 130);
+  --chart-5: oklch(0.45 0.14 155);
+  --sidebar-primary: oklch(0.55 0.17 145);
+  --sidebar-ring: oklch(0.55 0.17 145);
+  --sidebar-accent: oklch(0.9 0.06 145);
+  --sidebar-accent-foreground: oklch(0.3 0.08 145);
+}
+
+/* 暖橙 */
+html[data-theme="orange"] {
+  --primary: oklch(0.6 0.18 50);
+  --ring: oklch(0.6 0.18 50);
+  --accent: oklch(0.9 0.08 50);
+  --accent-foreground: oklch(0.35 0.1 50);
+  --chart-1: oklch(0.65 0.18 50);
+  --chart-2: oklch(0.75 0.1 40);
+  --chart-3: oklch(0.55 0.12 60);
+  --chart-4: oklch(0.7 0.14 35);
+  --chart-5: oklch(0.5 0.14 55);
+  --sidebar-primary: oklch(0.6 0.18 50);
+  --sidebar-ring: oklch(0.6 0.18 50);
+  --sidebar-accent: oklch(0.9 0.08 50);
+  --sidebar-accent-foreground: oklch(0.35 0.1 50);
+}
+
+/* 粉红 */
+html[data-theme="pink"] {
+  --primary: oklch(0.6 0.18 340);
+  --ring: oklch(0.6 0.18 340);
+  --accent: oklch(0.9 0.06 340);
+  --accent-foreground: oklch(0.3 0.08 340);
+  --chart-1: oklch(0.6 0.18 340);
+  --chart-2: oklch(0.7 0.1 350);
+  --chart-3: oklch(0.5 0.1 330);
+  --chart-4: oklch(0.65 0.12 355);
+  --chart-5: oklch(0.45 0.12 335);
+  --sidebar-primary: oklch(0.6 0.18 340);
+  --sidebar-ring: oklch(0.6 0.18 340);
+  --sidebar-accent: oklch(0.9 0.06 340);
+  --sidebar-accent-foreground: oklch(0.3 0.08 340);
+}
+
+/* 紫色 */
+html[data-theme="purple"] {
+  --primary: oklch(0.55 0.18 290);
+  --ring: oklch(0.55 0.18 290);
+  --accent: oklch(0.9 0.06 290);
+  --accent-foreground: oklch(0.3 0.08 290);
+  --chart-1: oklch(0.6 0.18 290);
+  --chart-2: oklch(0.7 0.1 280);
+  --chart-3: oklch(0.5 0.12 300);
+  --chart-4: oklch(0.65 0.1 275);
+  --chart-5: oklch(0.45 0.14 295);
+  --sidebar-primary: oklch(0.55 0.18 290);
+  --sidebar-ring: oklch(0.55 0.18 290);
+  --sidebar-accent: oklch(0.9 0.06 290);
+  --sidebar-accent-foreground: oklch(0.3 0.08 290);
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
