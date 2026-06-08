@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { BookOpen, FileText, BarChart3, Search } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { BookOpen, FileText, BarChart3, Search, LogOut, User, Shield } from "lucide-react"
 import ThemeSwitcher from "@/components/ThemeSwitcher"
 import SearchDialog from "@/components/SearchDialog"
+import { createSupabaseBrowserClient } from "@/lib/supabase-client"
+import { Button } from "@/components/ui/button"
 
 const navItems = [
   { href: "/", label: "我的文档", icon: FileText },
@@ -15,7 +17,29 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname()
+  const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient()
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null)
+      setLoading(false)
+    })
+  }, [])
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowserClient()
+    await supabase.auth.signOut()
+    router.push("/auth/login")
+    router.refresh()
+  }
+
+  const goToProfile = () => {
+    router.push("/profile")
+  }
 
   return (
     <>
@@ -27,7 +51,7 @@ export default function Navbar() {
             <span>记忆助手</span>
           </Link>
 
-          {/* 导航链接 */}
+          {/* 右侧区域 */}
           <nav className="flex items-center gap-1">
             {navItems.map((item) => {
               const isActive = pathname === item.href
@@ -55,6 +79,17 @@ export default function Navbar() {
                 <Search className="h-4 w-4" />
               </button>
               <ThemeSwitcher />
+              {!loading && userEmail && (
+                <div className="flex items-center gap-1 ml-1">
+                  <button
+                    className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-9 w-9 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors outline-none"
+                    onClick={goToProfile}
+                    title="个人中心"
+                  >
+                    <User className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </nav>
         </div>

@@ -1,355 +1,273 @@
-import Dexie, { type Table } from "dexie"
+/**
+ * 云端数据库操作
+ * 使用 Supabase 存储所有数据，跨设备同步
+ */
+
+import { createSupabaseBrowserClient } from "./supabase-client"
 import type { Document, Question, QuizRecord } from "@/types"
 
-/** 本地数据库 - 使用 IndexedDB 存储所有数据 */
-class MemoryDB extends Dexie {
-  documents!: Table<Document, number>
-  questions!: Table<Question, number>
-  quizRecords!: Table<QuizRecord, number>
+// ========== 工具函数 ==========
 
-  constructor() {
-    super("MemoryDB")
-    this.version(1).stores({
-      documents: "++id, title, status, createdAt",
-      questions: "++id, documentId, isBookmarked, createdAt",
-      quizRecords: "++id, questionId, isCorrect, createdAt",
-    })
-  }
+async function getUserId(): Promise<string> {
+  const supabase = createSupabaseBrowserClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error("未登录")
+  return user.id
 }
 
-const db = new MemoryDB()
+function getClient() {
+  return createSupabaseBrowserClient()
+}
+
+// 数据库行 → TypeScript 类型映射
+function mapDoc(d: any): Document {
+  return { id: d.id, title: d.title, fileType: d.file_type, status: d.status, createdAt: new Date(d.created_at) }
+}
+
+function mapQ(d: any): Question {
+  return { id: d.id, documentId: d.document_id, question: d.question, answer: d.answer, isBookmarked: !!d.is_bookmarked, createdAt: new Date(d.created_at) }
+}
+
+function mapQR(d: any): QuizRecord {
+  return { id: d.id, questionId: d.question_id, isCorrect: !!d.is_correct, createdAt: new Date(d.created_at) }
+}
 
 // ========== 文档操作 ==========
 
-/** 添加文档 */
 export async function addDocument(doc: Omit<Document, "id">): Promise<number> {
-  return await db.documents.add(doc as Document)
+  const userId = await getUserId()
+  const { data, error } = await getClient().from("documents").insert({
+    user_id: userId, title: doc.title, file_type: doc.fileType,
+    status: doc.status, created_at: doc.createdAt.toISOString(),
+  }).select("id").single()
+  if (error) throw error
+  return data.id
 }
 
-/** 获取所有文档（按时间倒序） */
 export async function getAllDocuments(): Promise<Document[]> {
-  return await db.documents.orderBy("createdAt").reverse().toArray()
+  const userId = await getUserId()
+  const { data } = await getClient().from("documents").select("*").eq("user_id", userId).order("created_at", { ascending: false })
+  return (data || []).map(mapDoc)
 }
 
-/** 获取单个文档 */
 export async function getDocument(id: number): Promise<Document | undefined> {
-  return await db.documents.get(id)
+  const userId = await getUserId()
+  const { data } = await getClient().from("documents").select("*").eq("user_id", userId).eq("id", id).maybeSingle()
+  return data ? mapDoc(data) : undefined
 }
 
-/** 更新文档状态 */
-export async function updateDocumentStatus(
-  id: number,
-  status: Document["status"]
-): Promise<void> {
-  await db.documents.update(id, { status })
+export async function updateDocumentStatus(id: number, status: Document["status"]): Promise<void> {
+  await getClient().from("documents").update({ status }).eq("id", id)
 }
 
-/** 删除文档及其关联的所有问题 */
 export async function deleteDocument(id: number): Promise<void> {
-  await db.transaction("rw", db.documents, db.questions, db.quizRecords, async () => {
-    const questionIds = await db.questions
-      .where("documentId")
-      .equals(id)
-      .primaryKeys()
-
-    // 删除该文档下的所有答题记录
-    for (const qId of questionIds) {
-      await db.quizRecords.where("questionId").equals(qId).delete()
-    }
-
-    // 删除该文档下的所有问题
-    await db.questions.where("documentId").equals(id).delete()
-
-    // 删除文档本身
-    await db.documents.delete(id)
-  })
+  await getClient().from("documents").delete().eq("id", id)
 }
 
-/** 创建手动题库文档 */
 export async function createManualDocument(title: string): Promise<number> {
-  return await db.documents.add({
-    title,
-    fileType: "manual",
-    status: "completed",
-    createdAt: new Date(),
-  })
+  const userId = await getUserId()
+  const { data, error } = await getClient().from("documents").insert({
+    user_id: userId, title, file_type: "manual", status: "completed", created_at: new Date().toISOString(),
+  }).select("id").single()
+  if (error) throw error
+  return data.id
 }
 
 // ========== 题目操作 ==========
 
-/** 批量添加题目 */
-export async function addQuestions(
-  questions: Omit<Question, "id">[]
-): Promise<number[]> {
-  return await db.questions.bulkAdd(questions as Question[], { allKeys: true })
+export async function addQuestions(questions: Omit<Question, "id">[]): Promise<number[]> {
+  const userId = await getUserId()
+  const { data, error } = await getClient().from("questions").insert(
+    questions.map((q) => ({
+      user_id: userId, document_id: q.documentId, question: q.question, answer: q.answer,
+      is_bookmarked: q.isBookmarked, created_at: q.createdAt.toISOString(),
+    }))
+  ).select("id")
+  if (error) throw error
+  return data.map((d: any) => d.id)
 }
 
-/** 添加单道题目 */
-export async function addSingleQuestion(
-  q: Omit<Question, "id">
-): Promise<number> {
-  return await db.questions.add(q as Question)
+export async function addSingleQuestion(q: Omit<Question, "id">): Promise<number> {
+  const userId = await getUserId()
+  const { data, error } = await getClient().from("questions").insert({
+    user_id: userId, document_id: q.documentId, question: q.question, answer: q.answer,
+    is_bookmarked: q.isBookmarked, created_at: q.createdAt.toISOString(),
+  }).select("id").single()
+  if (error) throw error
+  return data.id
 }
 
-/** 删除单道题目及其答题记录 */
 export async function deleteQuestion(questionId: number): Promise<void> {
-  await db.transaction("rw", db.questions, db.quizRecords, async () => {
-    await db.quizRecords.where("questionId").equals(questionId).delete()
-    await db.questions.delete(questionId)
-  })
+  await getClient().from("questions").delete().eq("id", questionId)
 }
 
-/** 获取某个文档下的所有题目 */
-export async function getQuestionsByDocument(
-  documentId: number
-): Promise<Question[]> {
-  return await db.questions
-    .where("documentId")
-    .equals(documentId)
-    .toArray()
+export async function getQuestionsByDocument(documentId: number): Promise<Question[]> {
+  const { data } = await getClient().from("questions").select("*").eq("document_id", documentId).order("created_at", { ascending: true })
+  return (data || []).map(mapQ)
 }
 
-/** 获取所有题目 */
 export async function getAllQuestions(): Promise<Question[]> {
-  return await db.questions.toArray()
+  const userId = await getUserId()
+  const { data } = await getClient().from("questions").select("*").eq("user_id", userId).order("created_at", { ascending: false })
+  return (data || []).map(mapQ)
 }
 
-/** 搜索题目（按关键词匹配题目和答案） */
-export async function searchQuestions(keyword: string): Promise<Question[]> {
-  if (!keyword.trim()) return []
-  const kw = keyword.trim().toLowerCase()
-  const all = await db.questions.toArray()
-  return all.filter(
-    (q) =>
-      q.question.toLowerCase().includes(kw) ||
-      q.answer.toLowerCase().includes(kw)
-  )
-}
-
-/** 根据 ID 列表批量获取题目 */
 export async function getQuestionsByIds(ids: number[]): Promise<Question[]> {
   if (ids.length === 0) return []
-  return await db.questions.where("id").anyOf(ids).toArray()
+  const { data } = await getClient().from("questions").select("*").in("id", ids)
+  return (data || []).map(mapQ)
 }
 
-/** 获取所有收藏的题目 */
 export async function getBookmarkedQuestions(): Promise<Question[]> {
-  return await db.questions
-    .where("isBookmarked")
-    .equals(1)
-    .toArray()
+  const userId = await getUserId()
+  const { data } = await getClient().from("questions").select("*").eq("user_id", userId).eq("is_bookmarked", true)
+  return (data || []).map(mapQ)
 }
 
-/** 切换收藏状态 */
 export async function toggleBookmark(questionId: number): Promise<boolean> {
-  const q = await db.questions.get(questionId)
-  if (!q) return false
-  const newVal = !q.isBookmarked
-  await db.questions.update(questionId, { isBookmarked: newVal })
+  const { data: existing } = await getClient().from("questions").select("is_bookmarked").eq("id", questionId).single()
+  const newVal = !existing?.is_bookmarked
+  await getClient().from("questions").update({ is_bookmarked: newVal }).eq("id", questionId)
   return newVal
 }
 
-/** 随机获取一道题（可指定文档，排除已掌握 >=3 次的题目） */
-export async function getRandomQuestion(
-  documentId?: number
-): Promise<Question | undefined> {
-  let questions: Question[]
+export async function getRandomQuestion(documentId?: number): Promise<Question | undefined> {
+  const userId = await getUserId()
+  let query = getClient().from("questions").select("*").eq("user_id", userId)
+  if (documentId) query = query.eq("document_id", documentId)
 
-  if (documentId) {
-    questions = await db.questions
-      .where("documentId")
-      .equals(documentId)
-      .toArray()
-  } else {
-    questions = await db.questions.toArray()
-  }
-
-  if (questions.length === 0) return undefined
-
-  // 排除已掌握的题目
   const masteredIds = await getMasteredQuestionIds()
-  const masteredSet = new Set(masteredIds)
-  const available = questions.filter((q) => q.id !== undefined && !masteredSet.has(q.id))
+  if (masteredIds.length > 0) {
+    query = query.not("id", "in", `(${masteredIds.join(",")})`)
+  }
 
-  if (available.length === 0) return undefined
-
-  const randomIndex = Math.floor(Math.random() * available.length)
-  return available[randomIndex]
+  const { data } = await query
+  if (!data || data.length === 0) return undefined
+  return mapQ(data[Math.floor(Math.random() * data.length)])
 }
 
-/** 获取题目总数 */
 export async function getQuestionCount(documentId?: number): Promise<number> {
-  if (documentId) {
-    return await db.questions.where("documentId").equals(documentId).count()
-  }
-  return await db.questions.count()
+  const userId = await getUserId()
+  let query = getClient().from("questions").select("*", { count: "exact", head: true }).eq("user_id", userId)
+  if (documentId) query = query.eq("document_id", documentId)
+  const { count } = await query
+  return count || 0
 }
 
-// ========== 答题记录操作 ==========
+// ========== 答题记录 ==========
 
-/** 添加答题记录 */
-export async function addQuizRecord(
-  record: Omit<QuizRecord, "id">
-): Promise<number> {
-  return await db.quizRecords.add(record as QuizRecord)
+export async function addQuizRecord(record: Omit<QuizRecord, "id">): Promise<number> {
+  const userId = await getUserId()
+  const { data, error } = await getClient().from("quiz_records").insert({
+    user_id: userId, question_id: record.questionId, is_correct: record.isCorrect, created_at: record.createdAt.toISOString(),
+  }).select("id").single()
+  if (error) throw error
+  return data.id
 }
 
-/** 获取某道题的答题记录 */
-export async function getRecordsByQuestion(
-  questionId: number
-): Promise<QuizRecord[]> {
-  return await db.quizRecords
-    .where("questionId")
-    .equals(questionId)
-    .toArray()
+export async function getRecordsByQuestion(questionId: number): Promise<QuizRecord[]> {
+  const { data } = await getClient().from("quiz_records").select("*").eq("question_id", questionId).order("created_at", { ascending: false })
+  return (data || []).map(mapQR)
 }
 
-/** 获取所有答题记录 */
 export async function getAllQuizRecords(): Promise<QuizRecord[]> {
-  return await db.quizRecords.toArray()
+  const userId = await getUserId()
+  const { data } = await getClient().from("quiz_records").select("*").eq("user_id", userId)
+  return (data || []).map(mapQR)
 }
 
-/** 获取答错的题目 ID 列表（排除已掌握 >=3 次的题目） */
-export async function getWrongQuestionIds(): Promise<number[]> {
-  const records = await db.quizRecords.toArray()
+export async function deleteQuizRecordsByQuestion(questionId: number): Promise<void> {
+  await getClient().from("quiz_records").delete().eq("question_id", questionId)
+}
 
-  // 按题目分组，取最新一次记录
-  const latest: Map<number, QuizRecord> = new Map()
+// ========== 错题与掌握逻辑 ==========
+
+export async function getWrongQuestionIds(): Promise<number[]> {
+  const userId = await getUserId()
+  const { data: records } = await getClient().from("quiz_records")
+    .select("question_id, is_correct").eq("user_id", userId).order("created_at", { ascending: false })
+  if (!records || records.length === 0) return []
+
+  const latest = new Map<number, boolean>()
   for (const r of records) {
-    const existing = latest.get(r.questionId)
-    if (!existing || r.createdAt > existing.createdAt) {
-      latest.set(r.questionId, r)
-    }
+    if (!latest.has(r.question_id)) latest.set(r.question_id, r.is_correct)
   }
 
-  const wrongIds = Array.from(latest.entries())
-    .filter(([_, record]) => !record.isCorrect)
-    .map(([id]) => id)
-
-  // 排除已掌握的题目
+  const wrongIds = Array.from(latest.entries()).filter(([_, c]) => !c).map(([id]) => id)
   const masteredIds = await getMasteredQuestionIds()
   const masteredSet = new Set(masteredIds)
   return wrongIds.filter((id) => !masteredSet.has(id))
 }
 
-/** 获取指定文档中的错题 ID 列表 */
 export async function getWrongQuestionIdsByDocument(docId: number): Promise<number[]> {
   const allWrongIds = await getWrongQuestionIds()
   if (allWrongIds.length === 0) return []
-  const docQuestions = await db.questions.where("documentId").equals(docId).toArray()
-  const docQuestionIds = new Set(docQuestions.map((q) => q.id).filter(Boolean) as number[])
-  return allWrongIds.filter((id) => docQuestionIds.has(id))
+  const { data } = await getClient().from("questions").select("id").eq("document_id", docId)
+  const docIds = new Set((data || []).map((q: any) => q.id))
+  return allWrongIds.filter((id) => docIds.has(id))
 }
 
-/** 判断某道题是否已被标记为答错 */
 export async function isQuestionWrong(questionId: number): Promise<boolean> {
-  const records = await db.quizRecords.where("questionId").equals(questionId).toArray()
-  if (records.length === 0) return false
-  const latest = records.reduce((a, b) => (a.createdAt > b.createdAt ? a : b))
-  return !latest.isCorrect
+  const { data } = await getClient().from("quiz_records").select("is_correct").eq("question_id", questionId).order("created_at", { ascending: false }).limit(1)
+  return data && data.length > 0 ? !data[0].is_correct : false
 }
 
-/** 获取某道题答对次数 */
 export async function getCorrectCount(questionId: number): Promise<number> {
-  const correctRecords = await db.quizRecords
-    .where("questionId")
-    .equals(questionId)
-    .filter((r) => r.isCorrect)
-    .count()
-  return correctRecords
+  const { count } = await getClient().from("quiz_records").select("*", { count: "exact", head: true }).eq("question_id", questionId).eq("is_correct", true)
+  return count || 0
 }
 
-/** 判断某道题是否达到掌握次数（3次答对） */
-const MASTERED_THRESHOLD = 3
 export async function isQuestionMastered(questionId: number): Promise<boolean> {
-  const count = await getCorrectCount(questionId)
-  return count >= MASTERED_THRESHOLD
+  return (await getCorrectCount(questionId)) >= 3
 }
 
-/** 获取所有已掌握的题目 ID（答对 >= 3 次） */
 export async function getMasteredQuestionIds(): Promise<number[]> {
-  const allRecords = await db.quizRecords.toArray()
+  const userId = await getUserId()
+  const { data: records } = await getClient().from("quiz_records").select("question_id").eq("user_id", userId).eq("is_correct", true)
+  if (!records) return []
+
+  const countMap = new Map<number, number>()
+  for (const r of records) {
+    countMap.set(r.question_id, (countMap.get(r.question_id) || 0) + 1)
+  }
+  return Array.from(countMap.entries()).filter(([_, c]) => c >= 3).map(([id]) => id)
+}
+
+export async function getQuizStats() {
+  const userId = await getUserId()
+  const { data: allQuestions } = await getClient().from("questions").select("id").eq("user_id", userId)
+  const totalCount = allQuestions?.length || 0
+  if (totalCount === 0) return { total: 0, correct: 0, wrong: 0, masteredCount: 0, inProgress: 0 }
+
+  const questionIds = allQuestions!.map((q: any) => q.id)
+  const { data: allRecords } = await getClient().from("quiz_records").select("question_id, is_correct").eq("user_id", userId)
+
   const correctCounts = new Map<number, number>()
-  for (const r of allRecords) {
-    if (r.isCorrect) {
-      correctCounts.set(r.questionId, (correctCounts.get(r.questionId) || 0) + 1)
-    }
+  const latestRecord = new Map<number, boolean>()
+  for (const r of allRecords || []) {
+    if (r.is_correct) correctCounts.set(r.question_id, (correctCounts.get(r.question_id) || 0) + 1)
+    if (!latestRecord.has(r.question_id)) latestRecord.set(r.question_id, r.is_correct)
   }
-  return Array.from(correctCounts.entries())
-    .filter(([_, count]) => count >= MASTERED_THRESHOLD)
-    .map(([id]) => id)
+
+  let masteredCount = 0, inProgress = 0, wrong = 0
+  for (const qId of questionIds) {
+    const cc = correctCounts.get(qId) || 0
+    if (cc >= 3) masteredCount++
+    else if (cc > 0) inProgress++
+    if (latestRecord.get(qId) === false && cc < 3) wrong++
+  }
+
+  return { total: totalCount, correct: masteredCount, wrong, masteredCount, inProgress }
 }
 
-/** 获取掌握阈值 */
-export function getMasteredThreshold(): number {
-  return MASTERED_THRESHOLD
+export const MASTERED_THRESHOLD = 3
+export function getMasteredThreshold() { return MASTERED_THRESHOLD }
+
+export async function searchQuestions(keyword: string): Promise<Question[]> {
+  const userId = await getUserId()
+  if (!keyword.trim()) return []
+  const kw = keyword.trim()
+  const { data } = await getClient().from("questions").select("*").eq("user_id", userId)
+    .or(`question.ilike.%${kw}%,answer.ilike.%${kw}%`).limit(50)
+  return (data || []).map(mapQ)
 }
-
-/** 删除某道题的所有答题记录（用于从错题集中移除） */
-export async function deleteQuizRecordsByQuestion(questionId: number): Promise<void> {
-  await db.quizRecords.where("questionId").equals(questionId).delete()
-}
-
-/** 获取答题统计 */
-export async function getQuizStats(): Promise<{
-  total: number          // 已答题数（有记录即可，不限次数）
-  correct: number        // 已掌握数（答对 >= 3 次）
-  wrong: number          // 最新记录为答错且未掌握
-  masteredCount: number  // 已掌握总次数（所有题累计答对次数）
-  inProgress: number     // 答题中（有答对记录但未满 3 次）
-}> {
-  const allQuestions = await db.questions.toArray()
-  const allRecords = await db.quizRecords.toArray()
-
-  // 按题目分组统计
-  const questionStats = new Map<number, { correctCount: number; hasWrong: boolean }>()
-  const latestRecord = new Map<number, QuizRecord>()
-
-  for (const r of allRecords) {
-    // 统计正确次数
-    if (r.isCorrect) {
-      const stats = questionStats.get(r.questionId) || { correctCount: 0, hasWrong: false }
-      stats.correctCount++
-      questionStats.set(r.questionId, stats)
-    }
-    // 记录最新记录
-    const existing = latestRecord.get(r.questionId)
-    if (!existing || r.createdAt > existing.createdAt) {
-      latestRecord.set(r.questionId, r)
-    }
-  }
-
-  // 按题目分组后，更新 hasWrong
-  for (const [qId, record] of latestRecord) {
-    if (!record.isCorrect) {
-      const stats = questionStats.get(qId) || { correctCount: 0, hasWrong: false }
-      stats.hasWrong = true
-      questionStats.set(qId, stats)
-    }
-  }
-
-  let masteredCount = 0
-  let inProgress = 0
-  let wrong = 0
-
-  for (const [_, stats] of questionStats) {
-    if (stats.correctCount >= MASTERED_THRESHOLD) {
-      masteredCount++
-    } else if (stats.correctCount > 0) {
-      inProgress++
-    }
-    if (stats.hasWrong && stats.correctCount < MASTERED_THRESHOLD) {
-      wrong++
-    }
-  }
-
-  return {
-    total: questionStats.size,
-    correct: masteredCount,
-    wrong,
-    masteredCount: masteredCount,
-    inProgress,
-  }
-}
-
-export default db

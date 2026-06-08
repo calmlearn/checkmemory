@@ -1,76 +1,125 @@
 import { NextResponse } from "next/server"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
-/**
- * AI 提取 API
- * 接收文档文本，调用 DeepSeek API 提取问题和知识点
- */
-
-// DeepSeek API 配置
-const API_KEY = process.env.DEEPSEEK_API_KEY
 const API_URL = "https://api.deepseek.com/v1/chat/completions"
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const MAX_DAILY_CALLS = parseInt(process.env.MAX_DAILY_API_CALLS || "10")
 
-/** 系统提示词 - 指导 AI 如何提取问答 */
-const SYSTEM_PROMPT = `你是一个专业的知识点提取助手。你的任务是从用户提供的文档内容中，尽可能完整地提取所有"问题-答案"对，帮助用户复习记忆。
+/** 获取用户今日已调用次数 */
+async function getTodayUsage(userId: string, supabase: any): Promise<number> {
+  const today = new Date().toISOString().split("T")[0]
+  const { data } = await supabase
+    .from("user_usage")
+    .select("call_count")
+    .eq("user_id", userId)
+    .eq("date", today)
+    .maybeSingle()
+  return data?.call_count ?? 0
+}
 
-核心要求：
-1. 提取文档中每一个可以转化为问答的知识点，不要遗漏
-2. 如果文档中有明确的标题/章节，每个标题都可以作为一个问题（如"什么是XXX？"）
-3. 对于列举型内容（如"第一点、第二点"），每条都要提取为单独的问答对
-4. 问题要清晰具体，答案要准确完整
-5. 返回格式必须是 JSON 数组，每个元素包含 question 和 answer 字段
-6. 使用中文输出
-7. 务必尽可能多地提取，宁多勿少
+/** 记录一次调用 */
+async function incrementUsage(userId: string, supabase: any) {
+  const today = new Date().toISOString().split("T")[0]
+  const { data: existing } = await supabase
+    .from("user_usage")
+    .select("id, call_count")
+    .eq("user_id", userId)
+    .eq("date", today)
+    .maybeSingle()
 
-返回格式示例：
-[
-  {"question": "问题内容", "answer": "答案内容"},
-  {"question": "问题内容", "answer": "答案内容"}
-]`
+  if (existing) {
+    await supabase
+      .from("user_usage")
+      .update({ call_count: existing.call_count + 1 })
+      .eq("id", existing.id)
+  } else {
+    await supabase
+      .from("user_usage")
+      .insert({ user_id: userId, date: today, call_count: 1 })
+  }
+}
 
+/** AI 提取 API - 带身份验证和配额控制 */
 export async function POST(request: Request) {
   try {
-    // 检查 API 密钥
-    if (!API_KEY) {
-      return NextResponse.json(
-        { error: "服务端未配置 DeepSeek API 密钥，请在 .env.local 中设置 DEEPSEEK_API_KEY" },
-        { status: 500 }
-      )
+    // 1. 验证用户身份
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll() },
+          setAll() {},
+        },
+      }
+    )
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user?.email) {
+      return NextResponse.json({ error: "请先登录" }, { status: 401 })
     }
 
-    // 解析请求体
+    // 2. 检查配额（管理员不限量）
+    const isAdmin = user.email === ADMIN_EMAIL
+    if (!isAdmin) {
+      const todayUsage = await getTodayUsage(user.id, supabase)
+      if (todayUsage >= MAX_DAILY_CALLS) {
+        return NextResponse.json(
+          { error: `今日额度已用完（每日 ${MAX_DAILY_CALLS} 次），明天再来` },
+          { status: 429 }
+        )
+      }
+    }
+
+    // 3. 解析请求
     const { text, title } = await request.json()
-
     if (!text || typeof text !== "string") {
-      return NextResponse.json(
-        { error: "请提供有效的文本内容" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "请提供有效的文本内容" }, { status: 400 })
     }
-
     if (text.length < 10) {
-      return NextResponse.json(
-        { error: "文本内容太少，无法提取知识点" },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: "文本内容太少" }, { status: 400 })
     }
 
-    // 调用 DeepSeek API（兼容 OpenAI 格式）
+    // 4. 调用 DeepSeek API
+    const maxChars = 60000
+    const trimmedText = text.length > maxChars
+      ? text.slice(0, maxChars) + "\n\n...（文档过长，已截取前部内容）"
+      : text
+
+    const SYSTEM_PROMPT = `你是一个专业的知识点提取助手。你的任务是**逐字逐句**阅读用户提供的文档内容，**不遗漏任何一个知识点**，将其全部提取为"问题-答案"对。
+
+=== 强制要求 ===
+1. 逐段分析文档内容，每一个独立的观点、定义、概念、标题、列举项都必须提取为单独的问答对
+2. 文档中的每一个标题/小标题都应作为一个问题
+3. 对于"第一、第二、第三"或"1.2.3."这类列举，每一项都要单独提取
+4. 如果有表格内容，表格中的每一行都要提取为一个问答对
+5. 即使是常识性内容也要提取，不要做价值判断
+6. 每份文档提取的数量没有上限，提取得越多越好
+7. 使用中文输出
+
+你必须返回一个 JSON 对象，格式如下：
+{
+  "questions": [
+    {"question": "问题内容", "answer": "答案内容"},
+    {"question": "问题内容", "answer": "答案内容"}
+  ]
+}`
+
     const response = await fetch(API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
       },
       body: JSON.stringify({
         model: "deepseek-chat",
         max_tokens: 16384,
         temperature: 0.3,
+        response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: `请从以下文档内容中提取知识点问答对。请仔细阅读全文，提取所有可能的考点，不要遗漏。\n\n文档标题：${title || "未命名"}\n\n文档内容：\n${text.slice(0, 60000)}`,
-          },
+          { role: "user", content: `请从以下文档内容中提取所有知识点问答对。\n\n文档标题：${title || "未命名"}\n\n文档内容：\n${trimmedText}` },
         ],
       }),
     })
@@ -78,58 +127,33 @@ export async function POST(request: Request) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error("DeepSeek API 错误:", response.status, errorText)
-      return NextResponse.json(
-        { error: "AI 服务调用失败，请稍后重试" },
-        { status: 502 }
-      )
+      return NextResponse.json({ error: "AI 服务调用失败，请稍后重试" }, { status: 502 })
+    }
+
+    // 5. 调用成功，记录使用量
+    if (!isAdmin) {
+      await incrementUsage(user.id, supabase)
     }
 
     const data = await response.json()
-
-    // OpenAI 兼容格式解析
     const content = data.choices?.[0]?.message?.content
-    if (!content) {
-      return NextResponse.json(
-        { error: "AI 返回结果为空" },
-        { status: 502 }
-      )
-    }
 
-    // 尝试从返回内容中提取 JSON
+    // 6. 解析 JSON
     let questions: { question: string; answer: string }[]
-
     try {
-      // 尝试直接解析
-      questions = JSON.parse(content)
-    } catch {
-      // 如果直接解析失败，尝试从 markdown 代码块中提取 JSON
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/)
-      if (jsonMatch) {
-        questions = JSON.parse(jsonMatch[1].trim())
+      const parsed = JSON.parse(content)
+      if (Array.isArray(parsed)) {
+        questions = parsed
+      } else if (parsed.questions && Array.isArray(parsed.questions)) {
+        questions = parsed.questions
       } else {
-        // 尝试从文本中提取数组部分
-        const arrayMatch = content.match(/\[[\s\S]*\]/)
-        if (arrayMatch) {
-          questions = JSON.parse(arrayMatch[0])
-        } else {
-          console.error("无法解析 AI 返回内容:", content)
-          return NextResponse.json(
-            { error: "AI 返回格式异常，请重试" },
-            { status: 502 }
-          )
-        }
+        return NextResponse.json({ error: "AI 返回格式异常" }, { status: 502 })
       }
+    } catch {
+      console.error("JSON 解析失败:", content)
+      return NextResponse.json({ error: "AI 返回格式异常" }, { status: 502 })
     }
 
-    // 确保结果是数组
-    if (!Array.isArray(questions)) {
-      return NextResponse.json(
-        { error: "AI 返回格式异常" },
-        { status: 502 }
-      )
-    }
-
-    // 过滤无效条目
     questions = questions.filter(
       (q) => q.question && q.answer && q.question.trim() && q.answer.trim()
     )
@@ -137,9 +161,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ questions })
   } catch (error) {
     console.error("提取 API 错误:", error)
-    return NextResponse.json(
-      { error: "服务器内部错误，请稍后重试" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 })
   }
 }
