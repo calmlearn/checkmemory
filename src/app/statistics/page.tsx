@@ -138,10 +138,15 @@ export default function StatisticsPage() {
     setLoading(false)
   }
 
-  /** 标记为已掌握（从错题集移除 + 计入统计） */
+  /** 标记为已掌握（直接计为3次答对，从错题集移除） */
   const handleMastered = async (questionId: number) => {
-    await addQuizRecord({ questionId, isCorrect: true, createdAt: new Date() })
+    const now = new Date()
+    // 一次添加3条答对记录，直接达到掌握门槛
+    await addQuizRecord({ questionId, isCorrect: true, createdAt: now })
+    await addQuizRecord({ questionId, isCorrect: true, createdAt: now })
+    await addQuizRecord({ questionId, isCorrect: true, createdAt: now })
     await loadDataForDoc(selectedDocId)
+    toast.success("已标记为掌握")
   }
 
   /** 移回题库：删除所有答题记录，题目重新可被抽取 */
