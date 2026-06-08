@@ -89,6 +89,12 @@ export async function getAllQuestions(): Promise<Question[]> {
   return await db.questions.toArray()
 }
 
+/** 根据 ID 列表批量获取题目 */
+export async function getQuestionsByIds(ids: number[]): Promise<Question[]> {
+  if (ids.length === 0) return []
+  return await db.questions.where("id").anyOf(ids).toArray()
+}
+
 /** 获取所有收藏的题目 */
 export async function getBookmarkedQuestions(): Promise<Question[]> {
   return await db.questions
