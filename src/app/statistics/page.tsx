@@ -12,6 +12,7 @@ import {
   AlertCircle,
   BookOpen,
   Check,
+  Undo2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,8 +29,12 @@ import {
   getRecordsByQuestion,
   addQuizRecord,
   getCorrectCount,
+  getMasteredQuestionIds,
+  deleteQuizRecordsByQuestion,
+  getAllQuestions,
 } from "@/lib/db"
 import type { Document, Question } from "@/types"
+import { toast } from "sonner"
 
 export default function StatisticsPage() {
   const [loading, setLoading] = useState(true)
@@ -38,6 +43,7 @@ export default function StatisticsPage() {
   const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0, masteredCount: 0, inProgress: 0 })
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
   const [bookmarkedQuestions, setBookmarkedQuestions] = useState<Question[]>([])
+  const [masteredQuestions, setMasteredQuestions] = useState<Question[]>([])
 
   /** 加载数据（按选中文档筛选） */
   const loadStats = useCallback(async () => {
@@ -107,6 +113,17 @@ export default function StatisticsPage() {
     } else {
       setBookmarkedQuestions(allBookmarked)
     }
+
+    // 已掌握题目（按文档筛选）
+    const allMasteredIds = await getMasteredQuestionIds()
+    let filteredMasteredIds = allMasteredIds
+    if (docId !== undefined) {
+      const docQuestions = await getQuestionsByDocument(docId)
+      const docQuestionIds = new Set(docQuestions.map((q) => q.id).filter(Boolean) as number[])
+      filteredMasteredIds = allMasteredIds.filter((id) => docQuestionIds.has(id))
+    }
+    const masteredQs = await getQuestionsByIds(filteredMasteredIds)
+    setMasteredQuestions(masteredQs)
   }
 
   useEffect(() => {
@@ -125,6 +142,13 @@ export default function StatisticsPage() {
   const handleMastered = async (questionId: number) => {
     await addQuizRecord({ questionId, isCorrect: true, createdAt: new Date() })
     await loadDataForDoc(selectedDocId)
+  }
+
+  /** 移回题库：删除所有答题记录，题目重新可被抽取 */
+  const handleUnmaster = async (questionId: number) => {
+    await deleteQuizRecordsByQuestion(questionId)
+    await loadDataForDoc(selectedDocId)
+    toast.success("已移回题库")
   }
 
   /** 导出错题集 */
@@ -269,8 +293,14 @@ export default function StatisticsPage() {
           </Card>
 
           {/* 详细标签页 */}
-          <Tabs defaultValue="wrong">
+          <Tabs defaultValue="mastered">
             <TabsList className="w-full">
+              <TabsTrigger value="mastered" className="flex-1">
+                已掌握
+                {masteredQuestions.length > 0 && (
+                  <Badge className="ml-2 bg-green-500">{masteredQuestions.length}</Badge>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="wrong" className="flex-1">
                 错题集
                 {wrongQuestions.length > 0 && (
@@ -284,6 +314,46 @@ export default function StatisticsPage() {
                 )}
               </TabsTrigger>
             </TabsList>
+
+            {/* 已掌握 */}
+            <TabsContent value="mastered" className="space-y-4">
+              {masteredQuestions.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                    <p className="text-muted-foreground">还没有已掌握的题目</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">在测验中对同一道题答对 3 次即可掌握</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                masteredQuestions.map((q) => (
+                  <Card key={q.id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
+                          <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
+                          <span className="break-words">{q.question}</span>
+                        </CardTitle>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 gap-1"
+                          onClick={() => q.id !== undefined && handleUnmaster(q.id)}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" /> 移回题库
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-accent/50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">答案：</p>
+                        <p className="text-sm">{q.answer}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </TabsContent>
 
             {/* 错题集 */}
             <TabsContent value="wrong" className="space-y-4">
