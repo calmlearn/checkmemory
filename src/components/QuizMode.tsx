@@ -160,6 +160,19 @@ export default function QuizMode() {
   }
 
   /** 错题复习：已掌握 = 记录为答对，满3次才移除 */
+  const goToNextWrong = (list: Question[], currentIdx: number) => {
+    if (currentIdx < list.length - 1) {
+      setWrongIndex(currentIdx + 1)
+      refreshWrongCorrectCount(currentIdx + 1)
+    } else {
+      const shuffled = shuffleArray(list)
+      setWrongQuestions(shuffled)
+      setWrongIndex(0)
+      refreshWrongCorrectCount(0)
+    }
+    setShowWrongAnswer(false)
+  }
+
   const handleMasteredWrong = async () => {
     const q = wrongQuestions[wrongIndex]
     if (!q?.id) return
@@ -168,7 +181,7 @@ export default function QuizMode() {
     setWrongCorrectCount(newCount)
 
     if (newCount >= 3) {
-      // 满3次 → 从错题列表移除
+      // 满3次 → 从错题列表移除 + 自动下一题
       const newList = wrongQuestions.filter((_, i) => i !== wrongIndex)
       if (newList.length === 0) {
         setMode("select")
@@ -177,12 +190,16 @@ export default function QuizMode() {
       if (wrongIndex >= newList.length) {
         setWrongQuestions(shuffleArray(newList))
         setWrongIndex(0)
+        refreshWrongCorrectCount(0)
       } else {
         setWrongQuestions(newList)
+        setWrongIndex(wrongIndex)
+        refreshWrongCorrectCount(wrongIndex)
       }
+    } else {
+      // 不满3次：不移除，但自动跳到下一题
+      goToNextWrong(wrongQuestions, wrongIndex)
     }
-    // 不满3次：不移除，继续走
-    setShowWrongAnswer(false)
   }
 
   /** 切换错题时刷新答对次数 */
