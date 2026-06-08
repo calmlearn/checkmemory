@@ -183,6 +183,23 @@ export async function getWrongQuestionIds(): Promise<number[]> {
     .map(([id]) => id)
 }
 
+/** 获取指定文档中的错题 ID 列表 */
+export async function getWrongQuestionIdsByDocument(docId: number): Promise<number[]> {
+  const allWrongIds = await getWrongQuestionIds()
+  if (allWrongIds.length === 0) return []
+  const docQuestions = await db.questions.where("documentId").equals(docId).toArray()
+  const docQuestionIds = new Set(docQuestions.map((q) => q.id).filter(Boolean) as number[])
+  return allWrongIds.filter((id) => docQuestionIds.has(id))
+}
+
+/** 判断某道题是否已被标记为答错 */
+export async function isQuestionWrong(questionId: number): Promise<boolean> {
+  const records = await db.quizRecords.where("questionId").equals(questionId).toArray()
+  if (records.length === 0) return false
+  const latest = records.reduce((a, b) => (a.createdAt > b.createdAt ? a : b))
+  return !latest.isCorrect
+}
+
 /** 删除某道题的所有答题记录（用于从错题集中移除） */
 export async function deleteQuizRecordsByQuestion(questionId: number): Promise<void> {
   await db.quizRecords.where("questionId").equals(questionId).delete()
