@@ -114,6 +114,18 @@ export async function getAllQuestions(): Promise<Question[]> {
   return await db.questions.toArray()
 }
 
+/** 搜索题目（按关键词匹配题目和答案） */
+export async function searchQuestions(keyword: string): Promise<Question[]> {
+  if (!keyword.trim()) return []
+  const kw = keyword.trim().toLowerCase()
+  const all = await db.questions.toArray()
+  return all.filter(
+    (q) =>
+      q.question.toLowerCase().includes(kw) ||
+      q.answer.toLowerCase().includes(kw)
+  )
+}
+
 /** 根据 ID 列表批量获取题目 */
 export async function getQuestionsByIds(ids: number[]): Promise<Question[]> {
   if (ids.length === 0) return []

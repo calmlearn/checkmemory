@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BookOpen, FileText, BarChart3 } from "lucide-react"
+import { BookOpen, FileText, BarChart3, Search } from "lucide-react"
 import ThemeSwitcher from "@/components/ThemeSwitcher"
+import SearchDialog from "@/components/SearchDialog"
 
 const navItems = [
   { href: "/", label: "我的文档", icon: FileText },
@@ -13,40 +15,51 @@ const navItems = [
 
 export default function Navbar() {
   const pathname = usePathname()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        {/* 网站名称 */}
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary">
-          <BookOpen className="h-6 w-6" />
-          <span>记忆助手</span>
-        </Link>
+    <>
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          {/* 网站名称 */}
+          <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary">
+            <BookOpen className="h-6 w-6" />
+            <span>记忆助手</span>
+          </Link>
 
-        {/* 导航链接 */}
-        <nav className="flex items-center gap-1">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                }`}
+          {/* 导航链接 */}
+          <nav className="flex items-center gap-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{item.label}</span>
+                </Link>
+              )
+            })}
+            <div className="ml-2 border-l pl-2 border-border flex items-center gap-1">
+              <button
+                className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-9 w-9 rounded-full bg-transparent hover:bg-accent hover:text-accent-foreground transition-colors outline-none"
+                onClick={() => setSearchOpen(true)}
+                title="搜索题目"
               >
-                <item.icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{item.label}</span>
-              </Link>
-            )
-          })}
-          <div className="ml-2 border-l pl-2 border-border">
-            <ThemeSwitcher />
-          </div>
-        </nav>
-      </div>
-    </header>
+                <Search className="h-4 w-4" />
+              </button>
+              <ThemeSwitcher />
+            </div>
+          </nav>
+        </div>
+      </header>
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+    </>
   )
 }
