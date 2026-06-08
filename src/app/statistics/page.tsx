@@ -12,6 +12,7 @@ import {
   AlertCircle,
   BookOpen,
   Trash2,
+  ChevronLeft,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,7 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   getAllDocuments,
-  getAllQuestions,
+  getQuestionsByDocument,
   getQuizStats,
   getWrongQuestionIds,
   getQuestionsByIds,
@@ -33,52 +34,42 @@ import type { Document, Question } from "@/types"
 export default function StatisticsPage() {
   const [loading, setLoading] = useState(true)
   const [documents, setDocuments] = useState<Document[]>([])
+  const [selectedDocId, setSelectedDocId] = useState<number | undefined>(undefined)
   const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0 })
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
   const [bookmarkedQuestions, setBookmarkedQuestions] = useState<Question[]>([])
-  const [docStats, setDocStats] = useState<{ id: number; title: string; total: number; correct: number; wrong: number }[]>([])
-  const [documentMap, setDocumentMap] = useState<Record<number, string>>({})
 
+  /** 加载数据（按选中文档筛选） */
   const loadStats = useCallback(async () => {
     setLoading(true)
     const docs = await getAllDocuments()
     const completedDocs = docs.filter((d) => d.status === "completed")
     setDocuments(completedDocs)
 
-    // 构建文档名称映射
-    const docMap: Record<number, string> = {}
-    completedDocs.forEach((d) => {
-      if (d.id) docMap[d.id] = d.title
-    })
-    setDocumentMap(docMap)
+    await loadDataForDoc(selectedDocId, completedDocs)
 
-    // 总体统计
-    const quizStats = await getQuizStats()
-    setStats(quizStats)
+    setLoading(false)
+  }, [selectedDocId])
 
-    // 错题
-    const wrongIds = await getWrongQuestionIds()
-    const wrongQs = await getQuestionsByIds(wrongIds)
-    setWrongQuestions(wrongQs)
+  /** 加载某个文档（或全部）的统计数据 */
+  const loadDataForDoc = async (docId: number | undefined, docs?: Document[]) => {
+    const allDocs = docs || (await getAllDocuments()).filter((d) => d.status === "completed")
 
-    // 收藏
-    const bookmarked = await getBookmarkedQuestions()
-    setBookmarkedQuestions(bookmarked)
+    // 总体统计（可选文档）
+    let quizStats: { total: number; correct: number; wrong: number }
 
-    // 每个文档的学习进度
-    const dStats: typeof docStats = []
-    for (const doc of completedDocs) {
-      if (!doc.id) continue
-      const total = await getQuestionCount(doc.id)
-      const questions = await getAllQuestions()
-      const docQuestions = questions.filter((q) => q.documentId === doc.id)
+    if (docId === undefined) {
+      // 全部文档
+      quizStats = await getQuizStats()
+    } else {
+      // 指定文档：统计该文档下所有题目的答题情况
+      const questions = await getQuestionsByDocument(docId)
       let correct = 0
       let wrong = 0
-      for (const q of docQuestions) {
+      for (const q of questions) {
         if (!q.id) continue
         const records = await getRecordsByQuestion(q.id)
         if (records.length > 0) {
-          // 取最新一条记录
           const latest = records.reduce((a, b) =>
             a.createdAt > b.createdAt ? a : b
           )
@@ -86,20 +77,56 @@ export default function StatisticsPage() {
           else wrong++
         }
       }
-      dStats.push({ id: doc.id, title: doc.title, total, correct, wrong })
+      quizStats = { total: questions.length, correct, wrong }
     }
-    setDocStats(dStats)
-    setLoading(false)
-  }, [])
+    setStats(quizStats)
+
+    // 错题（按文档筛选）
+    const allWrongIds = await getWrongQuestionIds()
+    let filteredWrongIds = allWrongIds
+    if (docId !== undefined) {
+      const docQuestions = await getQuestionsByDocument(docId)
+      const docQuestionIds = new Set(docQuestions.map((q) => q.id).filter(Boolean))
+      filteredWrongIds = allWrongIds.filter((id) => docQuestionIds.has(id))
+    }
+    const wrongQs = await getQuestionsByIds(filteredWrongIds)
+    setWrongQuestions(wrongQs)
+
+    // 收藏（按文档筛选）
+    const allBookmarked = await getBookmarkedQuestions()
+    if (docId !== undefined) {
+      setBookmarkedQuestions(allBookmarked.filter((q) => q.documentId === docId))
+    } else {
+      setBookmarkedQuestions(allBookmarked)
+    }
+  }
 
   useEffect(() => {
     loadStats()
   }, [loadStats])
 
+  /** 切换文档 */
+  const handleSelectDoc = async (docId: number | undefined) => {
+    setLoading(true)
+    setSelectedDocId(docId)
+    await loadDataForDoc(docId)
+    setLoading(false)
+  }
+
+  /** 从错题集中删除 */
+  const handleDeleteWrong = async (questionId: number) => {
+    await deleteQuizRecordsByQuestion(questionId)
+    // 刷新数据
+    await loadDataForDoc(selectedDocId)
+  }
+
   /** 导出错题集 */
   const handleExportWrong = () => {
     if (wrongQuestions.length === 0) return
-    let text = "=== 错题集 ===\n\n"
+    const prefix = selectedDocId
+      ? documents.find((d) => d.id === selectedDocId)?.title || "错题集"
+      : "全部_错题集"
+    let text = `=== ${prefix} ===\n\n`
     wrongQuestions.forEach((q, i) => {
       text += `第 ${i + 1} 题：${q.question}\n`
       text += `答案：${q.answer}\n\n`
@@ -108,15 +135,18 @@ export default function StatisticsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `错题集_${new Date().toLocaleDateString()}.txt`
+    a.download = `${prefix}_${new Date().toLocaleDateString()}.txt`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  /** 导出收藏题目 */
+  /** 导出收藏 */
   const handleExportBookmarked = () => {
     if (bookmarkedQuestions.length === 0) return
-    let text = "=== 收藏题目 ===\n\n"
+    const prefix = selectedDocId
+      ? documents.find((d) => d.id === selectedDocId)?.title || "收藏"
+      : "全部_收藏"
+    let text = `=== ${prefix} ===\n\n`
     bookmarkedQuestions.forEach((q, i) => {
       text += `第 ${i + 1} 题：${q.question}\n`
       text += `答案：${q.answer}\n\n`
@@ -125,31 +155,25 @@ export default function StatisticsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `收藏题目_${new Date().toLocaleDateString()}.txt`
+    a.download = `${prefix}_${new Date().toLocaleDateString()}.txt`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  /** 从错题集中删除 */
-  const handleDeleteWrong = async (questionId: number) => {
-    await deleteQuizRecordsByQuestion(questionId)
-    const wrongIds = await getWrongQuestionIds()
-    const wrongQs = await getQuestionsByIds(wrongIds)
-    setWrongQuestions(wrongQs)
-    const quizStats = await getQuizStats()
-    setStats(quizStats)
-  }
+  const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0
 
-  if (loading) {
+  // ====== 文档选择界面 ======
+  if (!loading && documents.length === 0) {
     return (
-      <div className="max-w-4xl mx-auto py-20 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+      <div className="max-w-2xl mx-auto text-center space-y-4 py-12">
+        <BarChart3 className="h-16 w-16 text-muted-foreground/50 mx-auto" />
+        <h2 className="text-xl font-semibold">还没有数据</h2>
+        <p className="text-muted-foreground">
+          请先在首页上传文档并开始答题
+        </p>
       </div>
     )
   }
-
-  /** 正确率显示 */
-  const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -157,208 +181,186 @@ export default function StatisticsPage() {
       <div className="text-center space-y-2">
         <BarChart3 className="h-10 w-10 text-primary mx-auto" />
         <h1 className="text-2xl font-bold">学习统计</h1>
-        <p className="text-muted-foreground">查看你的学习进度和答题情况</p>
+        <p className="text-muted-foreground">选择文档查看对应的学习数据</p>
       </div>
 
-      {/* 总体概览卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="py-6 text-center">
-            <FileText className="h-6 w-6 text-primary mx-auto mb-2" />
-            <p className="text-2xl font-bold">{documents.length}</p>
-            <p className="text-sm text-muted-foreground">文档数</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-6 text-center">
-            <BookOpen className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-sm text-muted-foreground">已答题数</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-6 text-center">
-            <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto mb-2" />
-            <p className="text-2xl font-bold text-green-600">{stats.correct}</p>
-            <p className="text-sm text-muted-foreground">答对</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-6 text-center">
-            <XCircle className="h-6 w-6 text-red-500 mx-auto mb-2" />
-            <p className="text-2xl font-bold text-red-600">{stats.wrong}</p>
-            <p className="text-sm text-muted-foreground">答错</p>
-          </CardContent>
-        </Card>
-        <Card className="md:col-span-4">
-          <CardContent className="py-6">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium">总正确率</span>
-              <span className="text-2xl font-bold text-primary">{accuracy}%</span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-3">
-              <div
-                className="bg-primary h-3 rounded-full transition-all duration-500"
-                style={{ width: `${accuracy}%` }}
-              />
-            </div>
-          </CardContent>
-        </Card>
+      {/* 文档选择器 */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={selectedDocId === undefined ? "default" : "outline"}
+          size="sm"
+          onClick={() => handleSelectDoc(undefined)}
+        >
+          全部文档
+        </Button>
+        {documents.map((doc) => (
+          <Button
+            key={doc.id}
+            variant={selectedDocId === doc.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleSelectDoc(doc.id)}
+          >
+            {doc.title}
+          </Button>
+        ))}
       </div>
 
-      {/* 详细统计 */}
-      <Tabs defaultValue="documents">
-        <TabsList className="w-full">
-          <TabsTrigger value="documents" className="flex-1">文档进度</TabsTrigger>
-          <TabsTrigger value="wrong" className="flex-1">
-            错题集
-            {wrongQuestions.length > 0 && (
-              <Badge variant="destructive" className="ml-2">{wrongQuestions.length}</Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="bookmarked" className="flex-1">
-            收藏
-            {bookmarkedQuestions.length > 0 && (
-              <Badge className="ml-2 bg-yellow-500">{bookmarkedQuestions.length}</Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        {/* 文档进度 */}
-        <TabsContent value="documents" className="space-y-4">
-          {docStats.length === 0 ? (
+      {loading ? (
+        <div className="py-20 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+        </div>
+      ) : (
+        <>
+          {/* 统计概览 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
-              <CardContent className="py-12 text-center text-muted-foreground">
-                还没有答题记录
+              <CardContent className="py-6 text-center">
+                <BookOpen className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-sm text-muted-foreground">总题数</p>
               </CardContent>
             </Card>
-          ) : (
-            docStats.map((ds) => {
-              const dAccuracy = ds.total > 0 ? Math.round((ds.correct / ds.total) * 100) : 0
-              return (
-                <Card key={ds.id}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">{ds.title}</CardTitle>
-                    <CardDescription>
-                      共 {ds.total} 题 · 已答 {ds.correct + ds.wrong} 题 ·
-                      正确率 {dAccuracy}%
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="w-full bg-secondary rounded-full h-2">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all"
-                        style={{ width: `${dAccuracy}%` }}
-                      />
-                    </div>
+            <Card>
+              <CardContent className="py-6 text-center">
+                <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-green-600">{stats.correct}</p>
+                <p className="text-sm text-muted-foreground">已掌握</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-6 text-center">
+                <XCircle className="h-6 w-6 text-red-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-red-600">{stats.wrong}</p>
+                <p className="text-sm text-muted-foreground">未掌握</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-6 text-center">
+                <BarChart3 className="h-6 w-6 text-primary mx-auto mb-2" />
+                <p className="text-2xl font-bold text-primary">{accuracy}%</p>
+                <p className="text-sm text-muted-foreground">正确率</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 正确率进度条 */}
+          <Card>
+            <CardContent className="py-4">
+              <div className="w-full bg-secondary rounded-full h-3">
+                <div
+                  className="bg-primary h-3 rounded-full transition-all duration-500"
+                  style={{ width: `${accuracy}%` }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 详细标签页 */}
+          <Tabs defaultValue="wrong">
+            <TabsList className="w-full">
+              <TabsTrigger value="wrong" className="flex-1">
+                错题集
+                {wrongQuestions.length > 0 && (
+                  <Badge variant="destructive" className="ml-2">{wrongQuestions.length}</Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="bookmarked" className="flex-1">
+                收藏
+                {bookmarkedQuestions.length > 0 && (
+                  <Badge className="ml-2 bg-yellow-500">{bookmarkedQuestions.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* 错题集 */}
+            <TabsContent value="wrong" className="space-y-4">
+              {wrongQuestions.length > 0 && (
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" className="gap-2" onClick={handleExportWrong}>
+                    <Download className="h-4 w-4" />
+                    导出错题集
+                  </Button>
+                </div>
+              )}
+              {wrongQuestions.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                    <p className="text-muted-foreground">暂无错题，继续保持！</p>
                   </CardContent>
                 </Card>
-              )
-            })
-          )}
-        </TabsContent>
+              ) : (
+                wrongQuestions.map((q) => (
+                  <Card key={q.id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
+                          <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                          <span className="break-words">{q.question}</span>
+                        </CardTitle>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                          onClick={() => q.id !== undefined && handleDeleteWrong(q.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-accent/50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">答案：</p>
+                        <p className="text-sm">{q.answer}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </TabsContent>
 
-        {/* 错题集 */}
-        <TabsContent value="wrong" className="space-y-4">
-          {wrongQuestions.length > 0 && (
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleExportWrong}>
-                <Download className="h-4 w-4" />
-                导出错题集
-              </Button>
-            </div>
-          )}
-          {wrongQuestions.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                <p className="text-muted-foreground">暂无错题，继续保持！</p>
-              </CardContent>
-            </Card>
-          ) : (
-            wrongQuestions.map((q) => (
-              <Card key={q.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
-                      <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-                      <span className="break-words">{q.question}</span>
-                    </CardTitle>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {documentMap[q.documentId] && (
-                        <Badge variant="outline" className="text-xs">
-                          {documentMap[q.documentId]}
-                        </Badge>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => q.id !== undefined && handleDeleteWrong(q.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-accent/50 rounded-lg p-4">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">答案：</p>
-                    <p className="text-sm">{q.answer}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-
-        {/* 收藏题目 */}
-        <TabsContent value="bookmarked" className="space-y-4">
-          {bookmarkedQuestions.length > 0 && (
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleExportBookmarked}>
-                <Download className="h-4 w-4" />
-                导出收藏
-              </Button>
-            </div>
-          )}
-          {bookmarkedQuestions.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Bookmark className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
-                <p className="text-muted-foreground">还没有收藏题目</p>
-                <p className="text-sm text-muted-foreground/70 mt-1">
-                  在文档详情中点击书签图标即可收藏
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            bookmarkedQuestions.map((q) => (
-              <Card key={q.id}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
-                      <Bookmark className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5 fill-yellow-500" />
-                      <span className="break-words">{q.question}</span>
-                    </CardTitle>
-                    {documentMap[q.documentId] && (
-                      <Badge variant="outline" className="text-xs shrink-0">
-                        {documentMap[q.documentId]}
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-accent/50 rounded-lg p-4">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">答案：</p>
-                    <p className="text-sm">{q.answer}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
-      </Tabs>
+            {/* 收藏 */}
+            <TabsContent value="bookmarked" className="space-y-4">
+              {bookmarkedQuestions.length > 0 && (
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" className="gap-2" onClick={handleExportBookmarked}>
+                    <Download className="h-4 w-4" />
+                    导出收藏
+                  </Button>
+                </div>
+              )}
+              {bookmarkedQuestions.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Bookmark className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+                    <p className="text-muted-foreground">还没有收藏题目</p>
+                    <p className="text-sm text-muted-foreground/70 mt-1">
+                      在文档详情中点击书签图标即可收藏
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                bookmarkedQuestions.map((q) => (
+                  <Card key={q.id}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-start gap-2">
+                        <Bookmark className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5 fill-yellow-500" />
+                        <span className="break-words">{q.question}</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="bg-accent/50 rounded-lg p-4">
+                        <p className="text-sm font-medium text-muted-foreground mb-1">答案：</p>
+                        <p className="text-sm">{q.answer}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
     </div>
   )
 }
