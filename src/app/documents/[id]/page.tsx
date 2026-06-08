@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, use } from "react"
-import { ArrowLeft, BookOpen, Bookmark, Trash2, Loader2, Plus, PenSquare } from "lucide-react"
+import { ArrowLeft, BookOpen, Bookmark, Trash2, Loader2, Plus, PenSquare, FileText } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
-import { getDocument, getQuestionsByDocument, toggleBookmark, addSingleQuestion, deleteQuestion } from "@/lib/db"
+import { getDocument, getQuestionsByDocument, toggleBookmark, addSingleQuestion, addQuestions, deleteQuestion } from "@/lib/db"
 import type { Document, Question } from "@/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -23,10 +24,17 @@ export default function DocumentDetailPage({ params }: PageProps) {
   const [doc, setDoc] = useState<Document | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(true)
+
+  // 单个添加
   const [showAddForm, setShowAddForm] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
   const [newAnswer, setNewAnswer] = useState("")
   const [adding, setAdding] = useState(false)
+
+  // 批量添加
+  const [showBatchForm, setShowBatchForm] = useState(false)
+  const [batchText, setBatchText] = useState("")
+  const [batchAdding, setBatchAdding] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -47,6 +55,12 @@ export default function DocumentDetailPage({ params }: PageProps) {
     load()
   }, [docId, router])
 
+  /** 刷新题目列表 */
+  const refreshQuestions = async () => {
+    const qs = await getQuestionsByDocument(docId)
+    setQuestions(qs)
+  }
+
   /** 切换收藏 */
   const handleToggleBookmark = async (questionId: number) => {
     const newVal = await toggleBookmark(questionId)
@@ -57,7 +71,7 @@ export default function DocumentDetailPage({ params }: PageProps) {
     )
   }
 
-  /** 添加题目 */
+  /** 单个添加题目 */
   const handleAddQuestion = async () => {
     const q = newQuestion.trim()
     const a = newAnswer.trim()
@@ -76,10 +90,56 @@ export default function DocumentDetailPage({ params }: PageProps) {
     setNewQuestion("")
     setNewAnswer("")
     setShowAddForm(false)
-    const qs = await getQuestionsByDocument(docId)
-    setQuestions(qs)
+    await refreshQuestions()
     setAdding(false)
     toast.success("题目已添加")
+  }
+
+  /** 批量添加题目 */
+  const handleBatchAdd = async () => {
+    const text = batchText.trim()
+    if (!text) {
+      toast.error("请输入题目内容")
+      return
+    }
+
+    // 解析格式：题目和答案用空行或 --- 分隔
+    const pairs = text.split(/\n\s*\n|\n-{3,}\n/).filter(Boolean)
+    const qaList: { question: string; answer: string }[] = []
+
+    for (const pair of pairs) {
+      const lines = pair.trim().split("\n").filter(Boolean)
+      if (lines.length >= 2) {
+        // 第一行是题目，剩余的合并为答案
+        qaList.push({
+          question: lines[0].trim(),
+          answer: lines.slice(1).join("\n").trim(),
+        })
+      } else if (lines.length === 1) {
+        // 只有一行，跳过（不完整）
+        continue
+      }
+    }
+
+    if (qaList.length === 0) {
+      toast.error("未能解析出有效的题目，请检查格式")
+      return
+    }
+
+    setBatchAdding(true)
+    const questionsToAdd = qaList.map((qa) => ({
+      documentId: docId,
+      question: qa.question,
+      answer: qa.answer,
+      isBookmarked: false,
+      createdAt: new Date(),
+    }))
+    await addQuestions(questionsToAdd)
+    setBatchText("")
+    setShowBatchForm(false)
+    await refreshQuestions()
+    setBatchAdding(false)
+    toast.success(`成功添加 ${qaList.length} 道题目`)
   }
 
   /** 删除题目 */
@@ -125,38 +185,69 @@ export default function DocumentDetailPage({ params }: PageProps) {
         )}
       </div>
 
-      {/* 添加题目按钮/表单 */}
-      <Card>
-        <CardContent className="py-4">
-          {showAddForm ? (
-            <div className="space-y-3">
-              <Input
-                placeholder="输入题目..."
-                value={newQuestion}
-                onChange={(e) => setNewQuestion(e.target.value)}
-              />
-              <Input
-                placeholder="输入答案..."
-                value={newAnswer}
-                onChange={(e) => setNewAnswer(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddQuestion()}
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleAddQuestion} disabled={adding}>
-                  <Plus className="h-4 w-4 mr-1" /> 添加
-                </Button>
-                <Button variant="ghost" onClick={() => { setShowAddForm(false); setNewQuestion(""); setNewAnswer("") }}>
-                  取消
-                </Button>
-              </div>
+      {/* 添加题目 - 两个按钮 */}
+      {!showAddForm && !showBatchForm && (
+        <div className="grid grid-cols-2 gap-3">
+          <Button className="gap-2" variant="outline" onClick={() => setShowAddForm(true)}>
+            <Plus className="h-4 w-4" /> 单个添加
+          </Button>
+          <Button className="gap-2" variant="outline" onClick={() => setShowBatchForm(true)}>
+            <FileText className="h-4 w-4" /> 批量添加
+          </Button>
+        </div>
+      )}
+
+      {/* 单个添加表单 */}
+      {showAddForm && (
+        <Card>
+          <CardContent className="py-4 space-y-3">
+            <Input
+              placeholder="输入题目..."
+              value={newQuestion}
+              onChange={(e) => setNewQuestion(e.target.value)}
+            />
+            <Input
+              placeholder="输入答案..."
+              value={newAnswer}
+              onChange={(e) => setNewAnswer(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddQuestion()}
+            />
+            <div className="flex gap-2">
+              <Button onClick={handleAddQuestion} disabled={adding}>
+                <Plus className="h-4 w-4 mr-1" /> 添加
+              </Button>
+              <Button variant="ghost" onClick={() => { setShowAddForm(false); setNewQuestion(""); setNewAnswer("") }}>
+                取消
+              </Button>
             </div>
-          ) : (
-            <Button className="w-full gap-2" variant="outline" onClick={() => setShowAddForm(true)}>
-              <Plus className="h-4 w-4" /> 添加题目
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 批量添加表单 */}
+      {showBatchForm && (
+        <Card>
+          <CardContent className="py-4 space-y-3">
+            <div className="text-sm text-muted-foreground">
+              每道题占两行以上：<strong>第一行是题目</strong>，<strong>后面是答案</strong>，题目之间用<strong>空行</strong>或 <strong>---</strong> 分隔
+            </div>
+            <Textarea
+              placeholder={`什么是人工智能？\n人工智能是计算机科学的一个分支，致力于创建能够模拟人类智能的系统。\n\n机器学习的定义是什么？\n机器学习是AI的核心子领域，使计算机能够从数据中学习。\n\n深度学习和机器学习的关系？\n深度学习是机器学习的一个子集，使用多层神经网络。`}
+              rows={10}
+              value={batchText}
+              onChange={(e) => setBatchText(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button onClick={handleBatchAdd} disabled={batchAdding}>
+                <FileText className="h-4 w-4 mr-1" /> {batchAdding ? "添加中..." : "批量添加"}
+              </Button>
+              <Button variant="ghost" onClick={() => { setShowBatchForm(false); setBatchText("") }}>
+                取消
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 题目列表 */}
       {questions.length === 0 ? (
@@ -165,7 +256,7 @@ export default function DocumentDetailPage({ params }: PageProps) {
             <BookOpen className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
             <p className="text-muted-foreground">暂无题目</p>
             <p className="text-sm text-muted-foreground/70 mt-1">
-              点击上方「添加题目」按钮来创建第一道题
+              点击上方按钮添加题目
             </p>
           </CardContent>
         </Card>
