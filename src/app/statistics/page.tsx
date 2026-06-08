@@ -11,8 +11,7 @@ import {
   Loader2,
   AlertCircle,
   BookOpen,
-  Trash2,
-  ChevronLeft,
+  Check,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,7 +26,8 @@ import {
   getBookmarkedQuestions,
   getQuestionCount,
   getRecordsByQuestion,
-  deleteQuizRecordsByQuestion,
+  addQuizRecord,
+  getCorrectCount,
 } from "@/lib/db"
 import type { Document, Question } from "@/types"
 
@@ -35,7 +35,7 @@ export default function StatisticsPage() {
   const [loading, setLoading] = useState(true)
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocId, setSelectedDocId] = useState<number | undefined>(undefined)
-  const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0 })
+  const [stats, setStats] = useState({ total: 0, correct: 0, wrong: 0, masteredCount: 0, inProgress: 0 })
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
   const [bookmarkedQuestions, setBookmarkedQuestions] = useState<Question[]>([])
 
@@ -56,7 +56,7 @@ export default function StatisticsPage() {
     const allDocs = docs || (await getAllDocuments()).filter((d) => d.status === "completed")
 
     // 总体统计（可选文档）
-    let quizStats: { total: number; correct: number; wrong: number }
+    let quizStats: { total: number; correct: number; wrong: number; masteredCount: number; inProgress: number }
 
     if (docId === undefined) {
       // 全部文档
@@ -64,20 +64,28 @@ export default function StatisticsPage() {
     } else {
       // 指定文档：统计该文档下所有题目的答题情况
       const questions = await getQuestionsByDocument(docId)
-      let correct = 0
+      let masteredCount = 0
+      let inProgress = 0
       let wrong = 0
       for (const q of questions) {
         if (!q.id) continue
+        const correctCount = await getCorrectCount(q.id)
         const records = await getRecordsByQuestion(q.id)
+        if (correctCount >= 3) {
+          masteredCount++
+        } else if (correctCount > 0) {
+          inProgress++
+        }
         if (records.length > 0) {
           const latest = records.reduce((a, b) =>
             a.createdAt > b.createdAt ? a : b
           )
-          if (latest.isCorrect) correct++
-          else wrong++
+          if (!latest.isCorrect && correctCount < 3) {
+            wrong++
+          }
         }
       }
-      quizStats = { total: questions.length, correct, wrong }
+      quizStats = { total: questions.length, correct: masteredCount, wrong, masteredCount, inProgress }
     }
     setStats(quizStats)
 
@@ -113,10 +121,9 @@ export default function StatisticsPage() {
     setLoading(false)
   }
 
-  /** 从错题集中删除 */
-  const handleDeleteWrong = async (questionId: number) => {
-    await deleteQuizRecordsByQuestion(questionId)
-    // 刷新数据
+  /** 标记为已掌握（从错题集移除 + 计入统计） */
+  const handleMastered = async (questionId: number) => {
+    await addQuizRecord({ questionId, isCorrect: true, createdAt: new Date() })
     await loadDataForDoc(selectedDocId)
   }
 
@@ -224,7 +231,14 @@ export default function StatisticsPage() {
               <CardContent className="py-6 text-center">
                 <CheckCircle2 className="h-6 w-6 text-green-500 mx-auto mb-2" />
                 <p className="text-2xl font-bold text-green-600">{stats.correct}</p>
-                <p className="text-sm text-muted-foreground">已掌握</p>
+                <p className="text-sm text-muted-foreground">已掌握 (答对3次)</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-6 text-center">
+                <BarChart3 className="h-6 w-6 text-orange-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-orange-600">{stats.inProgress}</p>
+                <p className="text-sm text-muted-foreground">答题中</p>
               </CardContent>
             </Card>
             <Card>
@@ -234,22 +248,21 @@ export default function StatisticsPage() {
                 <p className="text-sm text-muted-foreground">未掌握</p>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="py-6 text-center">
-                <BarChart3 className="h-6 w-6 text-primary mx-auto mb-2" />
-                <p className="text-2xl font-bold text-primary">{accuracy}%</p>
-                <p className="text-sm text-muted-foreground">正确率</p>
-              </CardContent>
-            </Card>
           </div>
 
-          {/* 正确率进度条 */}
+          {/* 掌握进度条 */}
           <Card>
             <CardContent className="py-4">
+              <div className="flex items-center justify-between mb-2 text-sm">
+                <span className="text-muted-foreground">已掌握 {stats.correct} 题 / 共 {stats.total} 题（答对3次即掌握）</span>
+                <span className="font-medium text-primary">
+                  {stats.correct}/{stats.total}
+                </span>
+              </div>
               <div className="w-full bg-secondary rounded-full h-3">
                 <div
                   className="bg-primary h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${accuracy}%` }}
+                  style={{ width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%` }}
                 />
               </div>
             </CardContent>
@@ -299,12 +312,12 @@ export default function StatisticsPage() {
                           <span className="break-words">{q.question}</span>
                         </CardTitle>
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                          onClick={() => q.id !== undefined && handleDeleteWrong(q.id)}
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0 text-green-600 border-green-200 hover:bg-green-50 gap-1"
+                          onClick={() => q.id !== undefined && handleMastered(q.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Check className="h-3.5 w-3.5" /> 已掌握
                         </Button>
                       </div>
                     </CardHeader>

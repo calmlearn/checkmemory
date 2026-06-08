@@ -26,6 +26,8 @@ import {
   getQuestionsByIds,
   deleteQuizRecordsByQuestion,
   isQuestionWrong,
+  getCorrectCount,
+  getMasteredThreshold,
 } from "@/lib/db"
 import type { Document, Question } from "@/types"
 import { toast } from "sonner"
@@ -42,6 +44,7 @@ export default function QuizMode() {
   const [showAnswer, setShowAnswer] = useState(false)
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [isWrong, setIsWrong] = useState(false)
+  const [correctCount, setCorrectCount] = useState(0) // 该题已答对次数
 
   // 错题复习
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
@@ -69,8 +72,11 @@ export default function QuizMode() {
     if (q?.id) {
       const wrong = await isQuestionWrong(q.id)
       setIsWrong(wrong)
+      const count = await getCorrectCount(q.id)
+      setCorrectCount(count)
     } else {
       setIsWrong(false)
+      setCorrectCount(0)
     }
   }, [selectedDocId])
 
@@ -145,23 +151,23 @@ export default function QuizMode() {
     }
   }
 
-  /** 错题复习：已掌握 = 删除记录 + 下一题（不重新打乱） */
+  /** 错题复习：已掌握 = 记录为答对 + 从错题集中移除 */
   const handleMasteredWrong = async () => {
     const q = wrongQuestions[wrongIndex]
     if (!q?.id) return
-    await deleteQuizRecordsByQuestion(q.id)
+    // 添加一条答对记录 → 计入统计，同时最新记录为正确 → 不再出现在错题集
+    await addQuizRecord({ questionId: q.id, isCorrect: true, createdAt: new Date() })
     const newList = wrongQuestions.filter((_, i) => i !== wrongIndex)
     if (newList.length === 0) {
       setMode("select")
       return
     }
-    // 移除后继续走原有顺序，如果到底了就重新打乱
+    // 继续走原有顺序，如果到底了就重新打乱
     if (wrongIndex >= newList.length) {
       setWrongQuestions(shuffleArray(newList))
       setWrongIndex(0)
     } else {
       setWrongQuestions(newList)
-      // wrongIndex 不变，自然指向下一题
     }
     setShowWrongAnswer(false)
   }
@@ -290,13 +296,25 @@ export default function QuizMode() {
                   </Badge>
                 )}
               </div>
-              {/* 错题标记 + 删除 */}
-              {isWrong && (
-                <div className="flex items-center gap-2">
+              {/* 掌握进度 + 错题标记 */}
+              <div className="flex items-center gap-2">
+                {correctCount > 0 && correctCount < 3 && (
+                  <Badge variant="secondary" className="gap-1">
+                    <Check className="h-3 w-3" /> 已掌握 {correctCount}/3
+                  </Badge>
+                )}
+                {correctCount >= 3 && (
+                  <Badge variant="default" className="gap-1 bg-green-500">
+                    <Check className="h-3 w-3" /> 已掌握 {correctCount}/3
+                  </Badge>
+                )}
+                {isWrong && (
                   <Badge variant="destructive" className="gap-1">
                     <AlertCircle className="h-3 w-3" />
                     曾答错
                   </Badge>
+                )}
+                {isWrong && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -306,8 +324,8 @@ export default function QuizMode() {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
             <CardTitle className="text-xl mt-4 leading-relaxed">{currentQuestion.question}</CardTitle>
           </CardHeader>

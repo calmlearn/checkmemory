@@ -112,7 +112,7 @@ export async function toggleBookmark(questionId: number): Promise<boolean> {
   return newVal
 }
 
-/** 随机获取一道题（可指定文档） */
+/** 随机获取一道题（可指定文档，排除已掌握 >=3 次的题目） */
 export async function getRandomQuestion(
   documentId?: number
 ): Promise<Question | undefined> {
@@ -129,8 +129,15 @@ export async function getRandomQuestion(
 
   if (questions.length === 0) return undefined
 
-  const randomIndex = Math.floor(Math.random() * questions.length)
-  return questions[randomIndex]
+  // 排除已掌握的题目
+  const masteredIds = await getMasteredQuestionIds()
+  const masteredSet = new Set(masteredIds)
+  const available = questions.filter((q) => q.id !== undefined && !masteredSet.has(q.id))
+
+  if (available.length === 0) return undefined
+
+  const randomIndex = Math.floor(Math.random() * available.length)
+  return available[randomIndex]
 }
 
 /** 获取题目总数 */
@@ -165,7 +172,7 @@ export async function getAllQuizRecords(): Promise<QuizRecord[]> {
   return await db.quizRecords.toArray()
 }
 
-/** 获取答错的题目 ID 列表 */
+/** 获取答错的题目 ID 列表（排除已掌握 >=3 次的题目） */
 export async function getWrongQuestionIds(): Promise<number[]> {
   const records = await db.quizRecords.toArray()
 
@@ -178,9 +185,14 @@ export async function getWrongQuestionIds(): Promise<number[]> {
     }
   }
 
-  return Array.from(latest.entries())
+  const wrongIds = Array.from(latest.entries())
     .filter(([_, record]) => !record.isCorrect)
     .map(([id]) => id)
+
+  // 排除已掌握的题目
+  const masteredIds = await getMasteredQuestionIds()
+  const masteredSet = new Set(masteredIds)
+  return wrongIds.filter((id) => !masteredSet.has(id))
 }
 
 /** 获取指定文档中的错题 ID 列表 */
@@ -200,6 +212,42 @@ export async function isQuestionWrong(questionId: number): Promise<boolean> {
   return !latest.isCorrect
 }
 
+/** 获取某道题答对次数 */
+export async function getCorrectCount(questionId: number): Promise<number> {
+  const correctRecords = await db.quizRecords
+    .where("questionId")
+    .equals(questionId)
+    .filter((r) => r.isCorrect)
+    .count()
+  return correctRecords
+}
+
+/** 判断某道题是否达到掌握次数（3次答对） */
+const MASTERED_THRESHOLD = 3
+export async function isQuestionMastered(questionId: number): Promise<boolean> {
+  const count = await getCorrectCount(questionId)
+  return count >= MASTERED_THRESHOLD
+}
+
+/** 获取所有已掌握的题目 ID（答对 >= 3 次） */
+export async function getMasteredQuestionIds(): Promise<number[]> {
+  const allRecords = await db.quizRecords.toArray()
+  const correctCounts = new Map<number, number>()
+  for (const r of allRecords) {
+    if (r.isCorrect) {
+      correctCounts.set(r.questionId, (correctCounts.get(r.questionId) || 0) + 1)
+    }
+  }
+  return Array.from(correctCounts.entries())
+    .filter(([_, count]) => count >= MASTERED_THRESHOLD)
+    .map(([id]) => id)
+}
+
+/** 获取掌握阈值 */
+export function getMasteredThreshold(): number {
+  return MASTERED_THRESHOLD
+}
+
 /** 删除某道题的所有答题记录（用于从错题集中移除） */
 export async function deleteQuizRecordsByQuestion(questionId: number): Promise<void> {
   await db.quizRecords.where("questionId").equals(questionId).delete()
@@ -207,27 +255,63 @@ export async function deleteQuizRecordsByQuestion(questionId: number): Promise<v
 
 /** 获取答题统计 */
 export async function getQuizStats(): Promise<{
-  total: number
-  correct: number
-  wrong: number
+  total: number          // 已答题数（有记录即可，不限次数）
+  correct: number        // 已掌握数（答对 >= 3 次）
+  wrong: number          // 最新记录为答错且未掌握
+  masteredCount: number  // 已掌握总次数（所有题累计答对次数）
+  inProgress: number     // 答题中（有答对记录但未满 3 次）
 }> {
+  const allQuestions = await db.questions.toArray()
   const allRecords = await db.quizRecords.toArray()
 
-  // 按题目分组，取最新一条记录
-  const latest: Map<number, QuizRecord> = new Map()
+  // 按题目分组统计
+  const questionStats = new Map<number, { correctCount: number; hasWrong: boolean }>()
+  const latestRecord = new Map<number, QuizRecord>()
+
   for (const r of allRecords) {
-    const existing = latest.get(r.questionId)
+    // 统计正确次数
+    if (r.isCorrect) {
+      const stats = questionStats.get(r.questionId) || { correctCount: 0, hasWrong: false }
+      stats.correctCount++
+      questionStats.set(r.questionId, stats)
+    }
+    // 记录最新记录
+    const existing = latestRecord.get(r.questionId)
     if (!existing || r.createdAt > existing.createdAt) {
-      latest.set(r.questionId, r)
+      latestRecord.set(r.questionId, r)
     }
   }
 
-  const entries = Array.from(latest.values())
-  const correct = entries.filter((r) => r.isCorrect).length
+  // 按题目分组后，更新 hasWrong
+  for (const [qId, record] of latestRecord) {
+    if (!record.isCorrect) {
+      const stats = questionStats.get(qId) || { correctCount: 0, hasWrong: false }
+      stats.hasWrong = true
+      questionStats.set(qId, stats)
+    }
+  }
+
+  let masteredCount = 0
+  let inProgress = 0
+  let wrong = 0
+
+  for (const [_, stats] of questionStats) {
+    if (stats.correctCount >= MASTERED_THRESHOLD) {
+      masteredCount++
+    } else if (stats.correctCount > 0) {
+      inProgress++
+    }
+    if (stats.hasWrong && stats.correctCount < MASTERED_THRESHOLD) {
+      wrong++
+    }
+  }
+
   return {
-    total: entries.length,
-    correct,
-    wrong: entries.length - correct,
+    total: questionStats.size,
+    correct: masteredCount,
+    wrong,
+    masteredCount: masteredCount,
+    inProgress,
   }
 }
 
