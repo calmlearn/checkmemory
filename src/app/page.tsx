@@ -45,6 +45,7 @@ export default function HomePage() {
 
   /** 删除文档 */
   const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault()
     e.stopPropagation()
     if (confirm("确定要删除该文档及其所有题目吗？")) {
       await deleteDocument(id)

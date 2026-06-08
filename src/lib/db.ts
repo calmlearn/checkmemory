@@ -183,6 +183,11 @@ export async function getWrongQuestionIds(): Promise<number[]> {
     .map(([id]) => id)
 }
 
+/** 删除某道题的所有答题记录（用于从错题集中移除） */
+export async function deleteQuizRecordsByQuestion(questionId: number): Promise<void> {
+  await db.quizRecords.where("questionId").equals(questionId).delete()
+}
+
 /** 获取答题统计 */
 export async function getQuizStats(): Promise<{
   total: number

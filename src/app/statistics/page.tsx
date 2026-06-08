@@ -11,6 +11,7 @@ import {
   Loader2,
   AlertCircle,
   BookOpen,
+  Trash2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ import {
   getBookmarkedQuestions,
   getQuestionCount,
   getRecordsByQuestion,
+  deleteQuizRecordsByQuestion,
 } from "@/lib/db"
 import type { Document, Question } from "@/types"
 
@@ -35,12 +37,20 @@ export default function StatisticsPage() {
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
   const [bookmarkedQuestions, setBookmarkedQuestions] = useState<Question[]>([])
   const [docStats, setDocStats] = useState<{ id: number; title: string; total: number; correct: number; wrong: number }[]>([])
+  const [documentMap, setDocumentMap] = useState<Record<number, string>>({})
 
   const loadStats = useCallback(async () => {
     setLoading(true)
     const docs = await getAllDocuments()
     const completedDocs = docs.filter((d) => d.status === "completed")
     setDocuments(completedDocs)
+
+    // 构建文档名称映射
+    const docMap: Record<number, string> = {}
+    completedDocs.forEach((d) => {
+      if (d.id) docMap[d.id] = d.title
+    })
+    setDocumentMap(docMap)
 
     // 总体统计
     const quizStats = await getQuizStats()
@@ -118,6 +128,16 @@ export default function StatisticsPage() {
     a.download = `收藏题目_${new Date().toLocaleDateString()}.txt`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  /** 从错题集中删除 */
+  const handleDeleteWrong = async (questionId: number) => {
+    await deleteQuizRecordsByQuestion(questionId)
+    const wrongIds = await getWrongQuestionIds()
+    const wrongQs = await getQuestionsByIds(wrongIds)
+    setWrongQuestions(wrongQs)
+    const quizStats = await getQuizStats()
+    setStats(quizStats)
   }
 
   if (loading) {
@@ -259,10 +279,27 @@ export default function StatisticsPage() {
             wrongQuestions.map((q) => (
               <Card key={q.id}>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-start gap-2">
-                    <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-                    {q.question}
-                  </CardTitle>
+                  <div className="flex items-start justify-between gap-4">
+                    <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
+                      <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                      <span className="break-words">{q.question}</span>
+                    </CardTitle>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {documentMap[q.documentId] && (
+                        <Badge variant="outline" className="text-xs">
+                          {documentMap[q.documentId]}
+                        </Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => q.id !== undefined && handleDeleteWrong(q.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="bg-accent/50 rounded-lg p-4">
@@ -299,10 +336,17 @@ export default function StatisticsPage() {
             bookmarkedQuestions.map((q) => (
               <Card key={q.id}>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-start gap-2">
-                    <Bookmark className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5 fill-yellow-500" />
-                    {q.question}
-                  </CardTitle>
+                  <div className="flex items-start justify-between gap-4">
+                    <CardTitle className="text-base flex items-start gap-2 flex-1 min-w-0">
+                      <Bookmark className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5 fill-yellow-500" />
+                      <span className="break-words">{q.question}</span>
+                    </CardTitle>
+                    {documentMap[q.documentId] && (
+                      <Badge variant="outline" className="text-xs shrink-0">
+                        {documentMap[q.documentId]}
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="bg-accent/50 rounded-lg p-4">
