@@ -65,6 +65,16 @@ export async function deleteDocument(id: number): Promise<void> {
   })
 }
 
+/** 创建手动题库文档 */
+export async function createManualDocument(title: string): Promise<number> {
+  return await db.documents.add({
+    title,
+    fileType: "manual",
+    status: "completed",
+    createdAt: new Date(),
+  })
+}
+
 // ========== 题目操作 ==========
 
 /** 批量添加题目 */
@@ -72,6 +82,21 @@ export async function addQuestions(
   questions: Omit<Question, "id">[]
 ): Promise<number[]> {
   return await db.questions.bulkAdd(questions as Question[], { allKeys: true })
+}
+
+/** 添加单道题目 */
+export async function addSingleQuestion(
+  q: Omit<Question, "id">
+): Promise<number> {
+  return await db.questions.add(q as Question)
+}
+
+/** 删除单道题目及其答题记录 */
+export async function deleteQuestion(questionId: number): Promise<void> {
+  await db.transaction("rw", db.questions, db.quizRecords, async () => {
+    await db.quizRecords.where("questionId").equals(questionId).delete()
+    await db.questions.delete(questionId)
+  })
 }
 
 /** 获取某个文档下的所有题目 */

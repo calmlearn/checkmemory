@@ -5,7 +5,7 @@ export type DocumentStatus = "processing" | "completed" | "error"
 export interface Document {
   id?: number
   title: string
-  fileType: "pdf" | "docx" | "pptx"
+  fileType: "pdf" | "docx" | "pptx" | "manual"
   status: DocumentStatus
   createdAt: Date
 }
