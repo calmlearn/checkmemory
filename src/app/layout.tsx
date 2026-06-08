@@ -20,13 +20,38 @@ export const metadata: Metadata = {
   description: "上传文档，AI自动提取知识点，随机测验帮你巩固记忆",
 }
 
+// 可用的主题列表，与 theme.ts 保持一致
+const THEMES = ["blue", "green", "orange", "pink", "purple"]
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="zh-CN"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // 在 HTML 渲染前同步读取 localStorage 设置主题，防止闪烁
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('app-theme');
+                  var themes = ${JSON.stringify(THEMES)};
+                  if (theme && themes.indexOf(theme) !== -1) {
+                    document.documentElement.setAttribute('data-theme', theme);
+                  }
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col bg-background">
         <ThemeProvider>
           <Navbar />
