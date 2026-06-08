@@ -50,6 +50,7 @@ export default function QuizMode() {
   const [wrongQuestions, setWrongQuestions] = useState<Question[]>([])
   const [wrongIndex, setWrongIndex] = useState(0)
   const [showWrongAnswer, setShowWrongAnswer] = useState(false)
+  const [wrongCorrectCount, setWrongCorrectCount] = useState(0) // 当前错题已答对次数
 
   const [loading, setLoading] = useState(true)
 
@@ -141,6 +142,13 @@ export default function QuizMode() {
     setWrongQuestions(shuffleArray(questions))
     setWrongIndex(0)
     setShowWrongAnswer(false)
+    // 加载当前错题的答对次数
+    if (questions[0]?.id) {
+      const count = await getCorrectCount(questions[0].id)
+      setWrongCorrectCount(count)
+    } else {
+      setWrongCorrectCount(0)
+    }
     setMode("wrong-review")
   }
 
@@ -151,35 +159,53 @@ export default function QuizMode() {
     }
   }
 
-  /** 错题复习：已掌握 = 记录为答对 + 从错题集中移除 */
+  /** 错题复习：已掌握 = 记录为答对，满3次才移除 */
   const handleMasteredWrong = async () => {
     const q = wrongQuestions[wrongIndex]
     if (!q?.id) return
-    // 添加一条答对记录 → 计入统计，同时最新记录为正确 → 不再出现在错题集
     await addQuizRecord({ questionId: q.id, isCorrect: true, createdAt: new Date() })
-    const newList = wrongQuestions.filter((_, i) => i !== wrongIndex)
-    if (newList.length === 0) {
-      setMode("select")
-      return
+    const newCount = await getCorrectCount(q.id)
+    setWrongCorrectCount(newCount)
+
+    if (newCount >= 3) {
+      // 满3次 → 从错题列表移除
+      const newList = wrongQuestions.filter((_, i) => i !== wrongIndex)
+      if (newList.length === 0) {
+        setMode("select")
+        return
+      }
+      if (wrongIndex >= newList.length) {
+        setWrongQuestions(shuffleArray(newList))
+        setWrongIndex(0)
+      } else {
+        setWrongQuestions(newList)
+      }
     }
-    // 继续走原有顺序，如果到底了就重新打乱
-    if (wrongIndex >= newList.length) {
-      setWrongQuestions(shuffleArray(newList))
-      setWrongIndex(0)
-    } else {
-      setWrongQuestions(newList)
-    }
+    // 不满3次：不移除，继续走
     setShowWrongAnswer(false)
   }
 
-  /** 错题复习：未掌握 = 下一题，到底后重新打乱循环 */
-  const handleUnmasteredWrong = () => {
+  /** 切换错题时刷新答对次数 */
+  const refreshWrongCorrectCount = async (index: number) => {
+    const q = wrongQuestions[index]
+    if (q?.id) {
+      const count = await getCorrectCount(q.id)
+      setWrongCorrectCount(count)
+    }
+  }
+
+  /** 错题复习：未掌握 = 下一题，保留错题，到底后重新打乱循环 */
+  const handleUnmasteredWrong = async () => {
     if (wrongIndex < wrongQuestions.length - 1) {
-      setWrongIndex(wrongIndex + 1)
+      const nextIndex = wrongIndex + 1
+      setWrongIndex(nextIndex)
+      await refreshWrongCorrectCount(nextIndex)
     } else {
       // 全部抽完一轮，重新打乱开始下一轮
-      setWrongQuestions(shuffleArray(wrongQuestions))
+      const shuffled = shuffleArray(wrongQuestions)
+      setWrongQuestions(shuffled)
       setWrongIndex(0)
+      await refreshWrongCorrectCount(0)
     }
     setShowWrongAnswer(false)
   }
@@ -385,14 +411,28 @@ export default function QuizMode() {
         <ChevronLeft className="h-4 w-4 mr-1" /> 返回
       </Button>
 
-      <Card className="shadow-lg border-2 border-red-200">
+      <Card className={`shadow-lg border-2 ${wrongCorrectCount >= 3 ? "border-green-200" : "border-red-200"}`}>
         <CardHeader>
-          {selectedDocId && (
-            <Badge variant="outline" className="mb-2 w-fit">
-              {documents.find((d) => d.id === selectedDocId)?.title}
-            </Badge>
-          )}
-          <CardTitle className="text-xl mt-2 leading-relaxed">{current?.question}</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+            {selectedDocId && (
+              <Badge variant="outline" className="w-fit">
+                {documents.find((d) => d.id === selectedDocId)?.title}
+              </Badge>
+            )}
+            <div className="flex items-center gap-2">
+              {wrongCorrectCount > 0 && wrongCorrectCount < 3 && (
+                <Badge variant="secondary" className="gap-1">
+                  <Check className="h-3 w-3" /> 已掌握 {wrongCorrectCount}/3
+                </Badge>
+              )}
+              {wrongCorrectCount >= 3 && (
+                <Badge variant="default" className="gap-1 bg-green-500">
+                  <Check className="h-3 w-3" /> 已掌握 3/3
+                </Badge>
+              )}
+            </div>
+          </div>
+          <CardTitle className="text-xl leading-relaxed">{current?.question}</CardTitle>
         </CardHeader>
 
         <CardContent>
