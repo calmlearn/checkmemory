@@ -27,8 +27,7 @@ export default function GatePage() {
     setLoading(false)
 
     if (res.ok) {
-      router.push("/auth/login")
-      router.refresh()
+      window.location.href = "/auth/login"
     } else {
       toast.error("密码错误，请重试")
     }

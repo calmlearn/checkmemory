@@ -30,8 +30,8 @@ export default function LoginPage() {
       toast.error("登录失败", { description: error.message })
       return
     }
-    router.push("/")
-    router.refresh()
+    // 强制全页跳转，确保浏览器携带所有 Cookie 通过中间件检查
+    window.location.href = "/"
   }
 
   return (
