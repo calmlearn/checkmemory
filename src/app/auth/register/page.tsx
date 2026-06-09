@@ -39,7 +39,7 @@ export default function RegisterPage() {
       toast.error("注册失败", { description: error.message })
       return
     }
-    toast.success("注册成功！请查看邮箱确认链接（可能需要检查垃圾箱）")
+    toast.success("注册成功！验证邮件已发送到您的 QQ 邮箱，请查收并点击链接完成验证（如未收到请检查垃圾箱）")
     router.push("/auth/login")
   }
 
