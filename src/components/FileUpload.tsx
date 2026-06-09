@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { Upload, FileText, X, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { parseFile, type FileType } from "@/lib/file-parser"
@@ -16,7 +16,24 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentFile, setCurrentFile] = useState<File | null>(null)
   const [progressText, setProgressText] = useState("")
+  const [usageInfo, setUsageInfo] = useState<{
+    used: number
+    limit: number
+    remaining: number
+    isAdmin: boolean
+    maxFileSizeMB: number
+  } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
+
+  // 获取当前用户的使用量信息
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((data) => setUsageInfo(data))
+      .catch(() => {})
+  }, [])
 
   /** 检查文件类型是否支持 */
   const isSupportedFile = (file: File): boolean => {
@@ -33,6 +50,13 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       return
     }
 
+    if (!usageInfo?.isAdmin && file.size > MAX_FILE_SIZE) {
+      toast.error("文件太大", {
+        description: "非管理员用户上传的文件不能超过 20MB",
+      })
+      return
+    }
+
     setCurrentFile(file)
     setIsProcessing(true)
     setProgressText("正在解析文件...")
@@ -41,7 +65,7 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       // 1. 解析文件内容
       const parseResult = await parseFile(file)
 
-      setProgressText("正在调用 AI 提取知识点...")
+      setProgressText("正在调用 AI 提取知识点（文档较长请耐心等待）...")
 
       // 2. 将文档存入本地数据库
       const docId = await addDocument({
@@ -62,7 +86,8 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       })
 
       if (!response.ok) {
-        throw new Error("AI 提取失败，请稍后重试")
+        const errData = await response.json().catch(() => ({ error: "AI 提取失败，请稍后重试" }))
+        throw new Error(errData.error || "AI 提取失败，请稍后重试")
       }
 
       const data = await response.json()
@@ -87,9 +112,15 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       const { updateDocumentStatus } = await import("@/lib/db")
       await updateDocumentStatus(docId, "completed")
 
-      toast.success("提取完成！", {
-        description: `共提取了 ${questions.length} 道题目`,
-      })
+      if (data.partial) {
+        toast.warning("提取完成（部分内容可能有遗漏）", {
+          description: `共提取了 ${questions.length} 道题目。${data.message || ""}`,
+        })
+      } else {
+        toast.success("提取完成！", {
+          description: `共提取了 ${questions.length} 道题目`,
+        })
+      }
 
       setCurrentFile(null)
       onSuccess?.()
@@ -101,7 +132,7 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       setProgressText("")
       setCurrentFile(null)
     }
-  }, [onSuccess])
+  }, [onSuccess, usageInfo?.isAdmin])
 
   /** 拖拽事件 */
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -197,6 +228,21 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
           </div>
         )}
       </div>
+
+      {/* 使用量信息 */}
+      {usageInfo && (
+        <div className="mt-3 text-sm text-muted-foreground text-center">
+          {usageInfo.isAdmin ? (
+            <span>👑 管理员：文件大小不限，提取次数不限</span>
+          ) : (
+            <span>
+              📊 今日剩余提取 <strong>{usageInfo.remaining}/{usageInfo.limit}</strong> 次
+              {" | "}
+              📁 文件最大 <strong>{usageInfo.maxFileSizeMB}MB</strong>
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
