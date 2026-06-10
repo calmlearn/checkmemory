@@ -268,36 +268,6 @@ html[data-theme="purple"] {
 }
 
 /* 暗色模式 + 主题色 */
-.dark body {
-  background-image:
-    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.15 250 / 0.15), transparent 60%),
-    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 220 / 0.1), transparent 50%);
-}
-
-html.dark[data-theme="green"] body {
-  background-image:
-    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.17 145 / 0.15), transparent 60%),
-    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 145 / 0.1), transparent 50%);
-}
-
-html.dark[data-theme="orange"] body {
-  background-image:
-    radial-gradient(ellipse at 20% 30%, oklch(0.18 0.15 50 / 0.15), transparent 60%),
-    radial-gradient(ellipse at 80% 10%, oklch(0.14 0.1 40 / 0.1), transparent 50%);
-}
-
-html.dark[data-theme="pink"] body {
-  background-image:
-    radial-gradient(ellipse at 20% 30%, oklch(0.18 0.15 340 / 0.12), transparent 60%),
-    radial-gradient(ellipse at 80% 10%, oklch(0.14 0.1 350 / 0.08), transparent 50%);
-}
-
-html.dark[data-theme="purple"] body {
-  background-image:
-    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.18 290 / 0.15), transparent 60%),
-    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 280 / 0.1), transparent 50%);
-}
-
 html.dark[data-theme="blue"] {
   --primary: oklch(0.65 0.15 250);
   --primary-foreground: oklch(0.985 0 0);
@@ -344,41 +314,43 @@ html.dark[data-theme="purple"] {
 
 /* ===== 毛玻璃效果 ===== */
 
-/* 页面的彩色渐变背景（各主题会覆盖背景色和渐变色） */
+/* --- 渐变背景 --- */
+/* 基准（所有浏览器显示纯色背景） */
+body {
+  background-attachment: fixed;
+  color: var(--foreground);
+}
+
+/* 默认蓝色主题渐变 */
 body {
   background-color: var(--background);
   background-image:
     radial-gradient(ellipse at 20% 30%, oklch(0.55 0.15 250 / 0.07), transparent 60%),
     radial-gradient(ellipse at 80% 10%, oklch(0.6 0.1 220 / 0.05), transparent 50%),
     radial-gradient(ellipse at 50% 80%, oklch(0.5 0.12 260 / 0.06), transparent 50%);
-  background-attachment: fixed;
-  color: var(--foreground);
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease,
               background-image 0.3s ease;
 }
 
-/* 各主题的彩色渐变背景 */
+/* 各主题渐变背景 */
 html[data-theme="green"] body {
   background-image:
     radial-gradient(ellipse at 20% 30%, oklch(0.55 0.17 145 / 0.08), transparent 60%),
     radial-gradient(ellipse at 80% 10%, oklch(0.6 0.12 145 / 0.05), transparent 50%),
     radial-gradient(ellipse at 50% 80%, oklch(0.5 0.1 160 / 0.05), transparent 50%);
 }
-
 html[data-theme="orange"] body {
   background-image:
     radial-gradient(ellipse at 20% 30%, oklch(0.6 0.18 50 / 0.08), transparent 60%),
     radial-gradient(ellipse at 80% 10%, oklch(0.55 0.1 40 / 0.06), transparent 50%),
     radial-gradient(ellipse at 50% 80%, oklch(0.5 0.12 60 / 0.05), transparent 50%);
 }
-
 html[data-theme="pink"] body {
   background-image:
     radial-gradient(ellipse at 20% 30%, oklch(0.6 0.18 340 / 0.07), transparent 60%),
     radial-gradient(ellipse at 80% 10%, oklch(0.55 0.1 350 / 0.05), transparent 50%),
     radial-gradient(ellipse at 50% 80%, oklch(0.45 0.12 335 / 0.05), transparent 50%);
 }
-
 html[data-theme="purple"] body {
   background-image:
     radial-gradient(ellipse at 20% 30%, oklch(0.55 0.18 290 / 0.08), transparent 60%),
@@ -386,35 +358,93 @@ html[data-theme="purple"] body {
     radial-gradient(ellipse at 50% 80%, oklch(0.45 0.14 295 / 0.05), transparent 50%);
 }
 
-/* 毛玻璃卡片 */
+/* --- 毛玻璃卡片 --- */
+/* 第1层：所有浏览器通用（轻微半透明 + 阴影 + 过渡） */
 [data-slot="card"] {
-  background-color: var(--card) !important;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  background-color: oklch(1 0 0 / 0.82);
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease,
               box-shadow 0.2s ease;
 }
 
-/* 卡片悬停时轻微增强阴影 */
-[data-slot="card"]:hover {
-  box-shadow: 0 8px 32px oklch(0 0 0 / 0.04);
-}
-
-/* 毛玻璃弹窗 */
-[data-slot="popover-content"] {
-  background-color: var(--popover) !important;
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-}
-
-/* 不支持 backdrop-filter 时的降级 */
-@supports not (backdrop-filter: blur(1px)) {
+/* 第2层：支持 backdrop-filter（含 webkit 前缀）的浏览器使用完整玻璃效果 */
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   [data-slot="card"] {
-    background-color: oklch(1 0 0 / 0.92) !important;
+    background-color: oklch(1 0 0 / 0.45);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
   }
   [data-slot="popover-content"] {
-    background-color: oklch(1 0 0 / 0.95) !important;
+    background-color: oklch(1 0 0 / 0.55);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
   }
+}
+
+/* 第3层：完全不支持 blur 的浏览器回退为近乎实色 */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  [data-slot="card"] {
+    background-color: oklch(1 0 0 / 0.95);
+  }
+  [data-slot="popover-content"] {
+    background-color: oklch(1 0 0 / 0.97);
+  }
+}
+
+/* 卡片悬停阴影效果（所有浏览器） */
+[data-slot="card"]:hover {
+  box-shadow: 0 8px 32px oklch(0 0 0 / 0.05);
+}
+
+/* 暗色模式卡片 */
+.dark [data-slot="card"] {
+  background-color: oklch(0.18 0 0 / 0.6);
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .dark [data-slot="card"] {
+    background-color: oklch(0.18 0 0 / 0.4);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+  }
+  .dark [data-slot="popover-content"] {
+    background-color: oklch(0.22 0 0 / 0.5);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+  }
+}
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .dark [data-slot="card"] {
+    background-color: oklch(0.18 0 0 / 0.85);
+  }
+  .dark [data-slot="popover-content"] {
+    background-color: oklch(0.22 0 0 / 0.9);
+  }
+}
+
+/* 暗色渐变背景 */
+.dark body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.15 250 / 0.15), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 220 / 0.1), transparent 50%);
+}
+html.dark[data-theme="green"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.17 145 / 0.15), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 145 / 0.1), transparent 50%);
+}
+html.dark[data-theme="orange"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, oklch(0.18 0.15 50 / 0.15), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, oklch(0.14 0.1 40 / 0.1), transparent 50%);
+}
+html.dark[data-theme="pink"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, oklch(0.18 0.15 340 / 0.12), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, oklch(0.14 0.1 350 / 0.08), transparent 50%);
+}
+html.dark[data-theme="purple"] body {
+  background-image:
+    radial-gradient(ellipse at 20% 30%, oklch(0.15 0.18 290 / 0.15), transparent 60%),
+    radial-gradient(ellipse at 80% 10%, oklch(0.12 0.1 280 / 0.1), transparent 50%);
 }
 
 /* 自定义滚动条 */
