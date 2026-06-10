@@ -508,3 +508,124 @@ html {
   animation: slideUp 0.3s ease-out both;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
+
+/* ===== 装饰元素 ===== */
+
+/* 页面标题下方的渐变装饰条 */
+.page-header {
+  position: relative;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+.page-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+}
+
+/* 卡片角落装饰光晕 */
+[data-slot="card"] {
+  position: relative;
+  overflow: hidden;
+}
+.glow-card::after,
+[data-slot="card"]:not(.no-glow)::after {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, oklch(0.55 0.15 250 / 0.06), transparent 70%);
+  pointer-events: none;
+}
+html[data-theme="green"] [data-slot="card"]:not(.no-glow)::after {
+  background: radial-gradient(circle, oklch(0.55 0.17 145 / 0.07), transparent 70%);
+}
+html[data-theme="orange"] [data-slot="card"]:not(.no-glow)::after {
+  background: radial-gradient(circle, oklch(0.6 0.18 50 / 0.07), transparent 70%);
+}
+html[data-theme="pink"] [data-slot="card"]:not(.no-glow)::after {
+  background: radial-gradient(circle, oklch(0.6 0.18 340 / 0.06), transparent 70%);
+}
+html[data-theme="purple"] [data-slot="card"]:not(.no-glow)::after {
+  background: radial-gradient(circle, oklch(0.55 0.18 290 / 0.07), transparent 70%);
+}
+
+/* 渐变色分隔线 */
+.gradient-divider {
+  border: none !important;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* ===== 增强动效 ===== */
+
+/* 进度条填充动画 */
+.progress-fill {
+  animation: fillBar 0.8s ease-out both;
+}
+@keyframes fillBar {
+  from { width: 0 !important; }
+}
+
+/* 数字滚动 */
+.count-up {
+  display: inline-block;
+  animation: countPop 0.4s ease-out both;
+}
+@keyframes countPop {
+  0% { opacity: 0; transform: scale(0.5); }
+  60% { transform: scale(1.1); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* 滚动入场动画 */
+.scroll-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
+.scroll-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 卡片悬浮增强 */
+[data-slot="card"].card-hover,
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+[data-slot="card"].card-hover:hover,
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px oklch(0 0 0 / 0.06);
+}
+
+/* 导航栏下划线动画 */
+.nav-link {
+  position: relative;
+}
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) scaleX(0);
+  width: 100%;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px;
+  transition: transform 0.2s ease;
+}
+.nav-link:hover::after,
+.nav-link.active::after {
+  transform: translateX(-50%) scaleX(1);
+}
