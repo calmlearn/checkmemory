@@ -64,9 +64,9 @@ export default function RootLayout({
           <main id="main-content" className="flex-1 container mx-auto px-4 py-6">
             {children}
           </main>
-          <footer className="border-t py-4 text-center text-sm text-muted-foreground">
+          <footer className="gradient-divider py-4 text-center text-sm text-muted-foreground">
             <div className="container mx-auto px-4">
-              记忆助手 - 数据保存在本地浏览器中
+              记忆助手
             </div>
           </footer>
           <Toaster position="top-center" />
