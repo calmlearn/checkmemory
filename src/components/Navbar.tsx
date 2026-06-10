@@ -52,7 +52,7 @@ export default function Navbar() {
           </Link>
 
           {/* 右侧区域 */}
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1" aria-label="主导航">
             {navItems.map((item) => {
               const isActive = pathname === item.href
               return (
@@ -72,21 +72,21 @@ export default function Navbar() {
             })}
             <div className="ml-2 border-l pl-2 border-border flex items-center gap-1">
               <button
-                className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-9 w-9 rounded-full bg-transparent hover:bg-accent hover:text-accent-foreground transition-colors outline-none"
+                className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-11 w-11 rounded-full bg-transparent hover:bg-accent hover:text-accent-foreground transition-colors outline-none"
                 onClick={() => setSearchOpen(true)}
-                title="搜索题目"
+                aria-label="搜索题目"
               >
-                <Search className="h-4 w-4" />
+                <Search className="h-5 w-5" />
               </button>
               <ThemeSwitcher />
               {!loading && userEmail && (
                 <div className="flex items-center gap-1 ml-1">
                   <button
-                    className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-9 w-9 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors outline-none"
+                    className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-11 w-11 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors outline-none"
                     onClick={goToProfile}
-                    title="个人中心"
+                    aria-label="个人中心"
                   >
-                    <User className="h-4 w-4" />
+                    <User className="h-5 w-5" />
                   </button>
                 </div>
               )}

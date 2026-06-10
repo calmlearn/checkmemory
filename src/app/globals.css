@@ -4,6 +4,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 尊重用户减少动效的偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -249,14 +259,119 @@ html[data-theme="purple"] {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* 暗色模式 + 主题色：主色用带色相的低饱和度颜色，区分不同主题 */
+html.dark[data-theme="blue"] {
+  --primary: oklch(0.65 0.15 250);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.65 0.15 250);
+  --chart-1: oklch(0.65 0.15 250);
+}
+
+html.dark[data-theme="green"] {
+  --primary: oklch(0.7 0.17 145);
+  --primary-foreground: oklch(0.15 0 0);
+  --ring: oklch(0.7 0.17 145);
+  --chart-1: oklch(0.7 0.17 145);
+}
+
+html.dark[data-theme="orange"] {
+  --primary: oklch(0.75 0.15 50);
+  --primary-foreground: oklch(0.15 0 0);
+  --ring: oklch(0.75 0.15 50);
+  --chart-1: oklch(0.75 0.15 50);
+}
+
+html.dark[data-theme="pink"] {
+  --primary: oklch(0.7 0.15 340);
+  --primary-foreground: oklch(0.15 0 0);
+  --ring: oklch(0.7 0.15 340);
+  --chart-1: oklch(0.7 0.15 340);
+}
+
+html.dark[data-theme="purple"] {
+  --primary: oklch(0.65 0.15 290);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.65 0.15 290);
+  --chart-1: oklch(0.65 0.15 290);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+    /* 主题切换时的平滑过渡 */
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   }
   html {
     @apply font-sans;
   }
+}
+
+/* 主题切换时卡片、弹窗等跟随过渡 */
+body, .card, [data-slot="card"] {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.85 0.03 240);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.75 0.04 240);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0 0);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0 0);
+}
+
+/* 平滑滚动 */
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ===== 动画关键帧 ===== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 动画工具类 */
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out;
+}
+
+/* 列表项入场动画（stagger 延迟由 style="--i: N" 控制） */
+.list-enter > * {
+  animation: slideUp 0.3s ease-out both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }

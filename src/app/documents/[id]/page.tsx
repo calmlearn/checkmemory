@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import ConfirmDialog from "@/components/ConfirmDialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { getDocument, getQuestionsByDocument, toggleBookmark, addSingleQuestion, addQuestions, deleteQuestion } from "@/lib/db"
 import type { Document, Question } from "@/types"
@@ -35,6 +37,9 @@ export default function DocumentDetailPage({ params }: PageProps) {
   const [showBatchForm, setShowBatchForm] = useState(false)
   const [batchText, setBatchText] = useState("")
   const [batchAdding, setBatchAdding] = useState(false)
+
+  // 删除确认
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -144,17 +149,44 @@ export default function DocumentDetailPage({ params }: PageProps) {
 
   /** 删除题目 */
   const handleDeleteQuestion = async (questionId: number) => {
-    if (confirm("确定要删除这道题吗？")) {
-      await deleteQuestion(questionId)
-      setQuestions((prev) => prev.filter((q) => q.id !== questionId))
-      toast.success("题目已删除")
-    }
+    setDeleteTargetId(questionId)
+  }
+
+  const confirmDeleteQuestion = async () => {
+    if (deleteTargetId === null) return
+    await deleteQuestion(deleteTargetId)
+    setQuestions((prev) => prev.filter((q) => q.id !== deleteTargetId))
+    setDeleteTargetId(null)
+    toast.success("题目已删除")
   }
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto py-20 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+      <div className="max-w-3xl mx-auto space-y-6 py-10">
+        {/* 标题骨架 */}
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </div>
+        {/* 按钮骨架 */}
+        <div className="grid grid-cols-2 gap-3">
+          <Skeleton className="h-9 rounded-lg" />
+          <Skeleton className="h-9 rounded-lg" />
+        </div>
+        {/* 题目骨架 */}
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardContent className="py-4 space-y-3">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-16 w-full rounded-lg" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     )
   }
@@ -276,20 +308,22 @@ export default function DocumentDetailPage({ params }: PageProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={`h-8 w-8 ${
+                      className={`h-10 w-10 ${
                         q.isBookmarked
                           ? "text-yellow-500"
-                          : "text-muted-foreground opacity-0 group-hover:opacity-100"
+                          : "text-muted-foreground md:opacity-0 md:group-hover:opacity-100"
                       }`}
                       onClick={() => q.id !== undefined && handleToggleBookmark(q.id)}
+                      aria-label={q.isBookmarked ? "取消收藏" : "收藏题目"}
                     >
                       <Bookmark className="h-4 w-4" fill={q.isBookmarked ? "currentColor" : "none"} />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                      className="h-10 w-10 text-muted-foreground hover:text-destructive md:opacity-0 md:group-hover:opacity-100"
                       onClick={() => q.id !== undefined && handleDeleteQuestion(q.id)}
+                      aria-label="删除题目"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -306,6 +340,17 @@ export default function DocumentDetailPage({ params }: PageProps) {
           ))}
         </div>
       )}
+
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        title="删除题目"
+        description="确定要删除这道题吗？此操作不可撤销。"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={confirmDeleteQuestion}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   )
 }

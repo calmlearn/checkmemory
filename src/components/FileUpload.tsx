@@ -184,6 +184,10 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={isProcessing ? undefined : handleClick}
+        onKeyDown={isProcessing ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") handleClick() }}
+        role="button"
+        tabIndex={isProcessing ? -1 : 0}
+        aria-label="点击上传或拖拽文件到此处"
         className={`
           relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer
           transition-all duration-200
@@ -210,6 +214,10 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
                 {currentFile.name}
               </p>
             )}
+            {/* 进度条 */}
+            <div className="w-48 h-1.5 bg-secondary rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "60%" }} />
+            </div>
           </div>
         ) : (
           /* 默认状态 */

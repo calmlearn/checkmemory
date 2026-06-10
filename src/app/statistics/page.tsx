@@ -251,7 +251,7 @@ export default function StatisticsPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="py-6 text-center">
-                <BookOpen className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                <BookOpen className="h-6 w-6 text-primary mx-auto mb-2" />
                 <p className="text-2xl font-bold">{stats.total}</p>
                 <p className="text-sm text-muted-foreground">总题数</p>
               </CardContent>
@@ -279,23 +279,82 @@ export default function StatisticsPage() {
             </Card>
           </div>
 
-          {/* 掌握进度条 */}
-          <Card>
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between mb-2 text-sm">
-                <span className="text-muted-foreground">已掌握 {stats.correct} 题 / 共 {stats.total} 题（答对3次即掌握）</span>
-                <span className="font-medium text-primary">
-                  {stats.correct}/{stats.total}
-                </span>
-              </div>
-              <div className="w-full bg-secondary rounded-full h-3">
-                <div
-                  className="bg-primary h-3 rounded-full transition-all duration-500"
-                  style={{ width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%` }}
-                />
-              </div>
-            </CardContent>
-          </Card>
+          {/* 掌握进度环 + 统计说明 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="md:col-span-1">
+              <CardContent className="py-6 flex flex-col items-center">
+                {/* SVG 进度环 */}
+                <div className="relative w-32 h-32">
+                  <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
+                    {/* 背景圆环 */}
+                    <circle
+                      cx="60" cy="60" r="52"
+                      fill="none"
+                      stroke="oklch(0.9 0.03 240)"
+                      strokeWidth="10"
+                      className="dark:stroke-[oklch(0.3_0_0)]"
+                    />
+                    {/* 进度圆环 */}
+                    <circle
+                      cx="60" cy="60" r="52"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="10"
+                      strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 52}
+                      strokeDashoffset={2 * Math.PI * 52 * (1 - (stats.total > 0 ? stats.correct / stats.total : 0))}
+                      className="text-primary transition-all duration-700"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-primary">{accuracy}%</p>
+                      <p className="text-xs text-muted-foreground">掌握率</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-3">
+                  答对 3 次即掌握
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 统计详情卡片 */}
+            <Card className="md:col-span-2">
+              <CardContent className="py-6 space-y-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">已掌握</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-green-600 dark:text-green-400">{stats.correct}</span>
+                    <span className="text-muted-foreground">题</span>
+                  </div>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full transition-all duration-500" style={{ width: `${stats.total > 0 ? (stats.correct / stats.total) * 100 : 0}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">答题中</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-orange-600 dark:text-orange-400">{stats.inProgress}</span>
+                    <span className="text-muted-foreground">题</span>
+                  </div>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2">
+                  <div className="bg-orange-500 h-2 rounded-full transition-all duration-500" style={{ width: `${stats.total > 0 ? (stats.inProgress / stats.total) * 100 : 0}%` }} />
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">未掌握</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-red-600 dark:text-red-400">{stats.wrong}</span>
+                    <span className="text-muted-foreground">题</span>
+                  </div>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full transition-all duration-500" style={{ width: `${stats.total > 0 ? (stats.wrong / stats.total) * 100 : 0}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* 详细标签页 */}
           <Tabs defaultValue="mastered">

@@ -31,6 +31,7 @@ import {
 } from "@/lib/db"
 import type { Document, Question } from "@/types"
 import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type Mode = "select" | "normal" | "wrong-review"
 
@@ -236,7 +237,20 @@ export default function QuizMode() {
 
   // ====== 加载中 ======
   if (loading) {
-    return <div className="max-w-2xl mx-auto py-20 text-center text-muted-foreground">加载中...</div>
+    return (
+      <div className="max-w-2xl mx-auto space-y-6 py-10">
+        <div className="text-center space-y-2">
+          <Skeleton className="h-10 w-10 rounded-full mx-auto" />
+          <Skeleton className="h-8 w-24 mx-auto" />
+          <Skeleton className="h-4 w-40 mx-auto" />
+        </div>
+        <Skeleton className="h-36 w-full rounded-xl" />
+        <div className="grid grid-cols-2 gap-4">
+          <Skeleton className="h-28 rounded-xl" />
+          <Skeleton className="h-28 rounded-xl" />
+        </div>
+      </div>
+    )
   }
 
   // ====== 没有文档 ======
@@ -284,26 +298,34 @@ export default function QuizMode() {
 
         {/* 模式选择 */}
         <div className="grid grid-cols-2 gap-4">
-          <Card
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
+          <div
+            className="cursor-pointer hover:bg-accent/50 transition-colors rounded-xl ring-1 ring-foreground/10 bg-card text-card-foreground"
             onClick={handleStartNormal}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleStartNormal() } }}
+            role="button"
+            tabIndex={0}
+            aria-label="普通抽查，随机抽取题目"
           >
-            <CardContent className="py-6 text-center">
+            <div className="p-6 text-center">
               <Shuffle className="h-8 w-8 text-primary mx-auto mb-3" />
               <p className="font-medium">普通抽查</p>
               <p className="text-xs text-muted-foreground mt-1">随机抽取题目</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer hover:bg-accent/50 transition-colors"
+            </div>
+          </div>
+          <div
+            className="cursor-pointer hover:bg-accent/50 transition-colors rounded-xl ring-1 ring-foreground/10 bg-card text-card-foreground"
             onClick={handleStartWrongReview}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleStartWrongReview() } }}
+            role="button"
+            tabIndex={0}
+            aria-label="错题复习，只复习答错的题"
           >
-            <CardContent className="py-6 text-center">
+            <div className="p-6 text-center">
               <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-3" />
               <p className="font-medium">错题复习</p>
               <p className="text-xs text-muted-foreground mt-1">只复习答错的题</p>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -375,7 +397,7 @@ export default function QuizMode() {
 
           <CardContent>
             {showAnswer ? (
-              <div className="bg-primary/5 rounded-xl p-6 border border-primary/10">
+              <div className="bg-primary/5 rounded-xl p-6 border border-primary/10" aria-live="polite">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                   <BookOpen className="h-4 w-4" />
                   <span>答案：</span>
@@ -454,7 +476,7 @@ export default function QuizMode() {
 
         <CardContent>
           {showWrongAnswer ? (
-            <div className="bg-primary/5 rounded-xl p-6 border border-primary/10">
+            <div className="bg-primary/5 rounded-xl p-6 border border-primary/10" aria-live="polite">
               <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
                 <BookOpen className="h-4 w-4" />
                 <span>答案：</span>

@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import FileUpload from "@/components/FileUpload"
+import ConfirmDialog from "@/components/ConfirmDialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getAllDocuments, deleteDocument, getQuestionCount, createManualDocument } from "@/lib/db"
 import type { Document } from "@/types"
 import Link from "next/link"
@@ -35,6 +37,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
   const [showCreateInput, setShowCreateInput] = useState(false)
   const [newDocTitle, setNewDocTitle] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
 
   /** 加载文档列表 */
   const loadDocuments = useCallback(async () => {
@@ -60,10 +63,14 @@ export default function HomePage() {
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.preventDefault()
     e.stopPropagation()
-    if (confirm("确定要删除该文档及其所有题目吗？")) {
-      await deleteDocument(id)
-      await loadDocuments()
-    }
+    setDeleteTarget(id)
+  }
+
+  const confirmDelete = async () => {
+    if (deleteTarget === null) return
+    await deleteDocument(deleteTarget)
+    setDeleteTarget(null)
+    await loadDocuments()
   }
 
   /** 创建自定义题库 */
@@ -131,11 +138,22 @@ export default function HomePage() {
         </h2>
 
         {loading ? (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              加载中...
-            </CardContent>
-          </Card>
+          <div className="grid gap-3">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="py-4">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-5 w-5 rounded" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-48" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <Skeleton className="h-6 w-16 rounded-full" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ) : documents.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
@@ -147,14 +165,14 @@ export default function HomePage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-3">
-            {documents.map((doc) => {
+          <div className="grid gap-3 list-enter">
+            {documents.map((doc, idx) => {
               const statusInfo = statusLabels[doc.status] || statusLabels.completed
               const count = questionCounts[doc.id!] ?? 0
               const typeLabel = fileTypeLabels[doc.fileType] || doc.fileType.toUpperCase()
 
               return (
-                <Link key={doc.id} href={`/documents/${doc.id}`}>
+                <Link key={doc.id} href={`/documents/${doc.id}`} style={{ "--i": idx } as React.CSSProperties}>
                   <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
                     <CardContent className="py-4">
                       <div className="flex items-center justify-between">
@@ -212,6 +230,17 @@ export default function HomePage() {
           </ol>
         </CardContent>
       </Card>
+
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="删除文档"
+        description="确定要删除该文档及其所有题目吗？此操作不可撤销。"
+        confirmText="删除"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

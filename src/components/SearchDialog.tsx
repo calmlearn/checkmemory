@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, FileText, PenSquare, Loader2, X } from "lucide-react"
 import { searchQuestions, getAllDocuments } from "@/lib/db"
 import type { Question } from "@/types"
@@ -17,6 +17,7 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
   const [docMap, setDocMap] = useState<Record<number, { title: string; fileType: string }>>({})
   const [searching, setSearching] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -32,6 +33,38 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [open])
+
+  // 焦点陷阱：Tab 循环在对话框内
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      onOpenChange(false)
+      return
+    }
+    if (e.key !== "Tab" || !panelRef.current) return
+    const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+  }, [onOpenChange])
+
+  useEffect(() => {
+    if (!open) return
+    document.addEventListener("keydown", handleKeyDown)
+    return () => document.removeEventListener("keydown", handleKeyDown)
+  }, [open, handleKeyDown])
 
   useEffect(() => {
     if (!keyword.trim()) {
@@ -50,12 +83,20 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-label="搜索题目"
+    >
       {/* 背景遮罩 */}
-      <div className="fixed inset-0 bg-black/40" onClick={() => onOpenChange(false)} />
+      <div className="fixed inset-0 bg-black/40 animate-fade-in" onClick={() => onOpenChange(false)} />
 
       {/* 搜索面板 */}
-      <div className="relative z-50 w-full max-w-xl mx-4 bg-background rounded-xl shadow-2xl border overflow-hidden">
+      <div
+        ref={panelRef}
+        className="relative z-50 w-full max-w-xl mx-4 bg-background rounded-xl shadow-2xl border overflow-hidden animate-scale-in"
+      >
         {/* 搜索输入框 */}
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <Search className="h-5 w-5 text-muted-foreground shrink-0" />
@@ -66,24 +107,24 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
             className="flex-1 bg-transparent outline-none text-base"
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && onOpenChange(false)}
+            aria-label="搜索题目或答案关键词"
           />
           {keyword && (
-            <button className="text-muted-foreground hover:text-foreground" onClick={() => setKeyword("")}>
+            <button className="text-muted-foreground hover:text-foreground" onClick={() => setKeyword("")} aria-label="清除搜索">
               <X className="h-4 w-4" />
             </button>
           )}
         </div>
 
         {/* 搜索结果 */}
-        <div className="max-h-[50vh] overflow-y-auto">
+        <div className="max-h-[50vh] overflow-y-auto" role="listbox" aria-label="搜索结果">
           {searching ? (
             <div className="py-12 text-center text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
               搜索中...
             </div>
           ) : keyword && results.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">
+            <div className="py-12 text-center text-muted-foreground" role="status">
               未找到匹配的题目
             </div>
           ) : results.length > 0 ? (
@@ -96,6 +137,8 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
                     href={`/documents/${q.documentId}`}
                     className="block px-4 py-3 hover:bg-accent/50 transition-colors"
                     onClick={() => onOpenChange(false)}
+                    role="option"
+                    aria-label={`题目：${q.question}，答案：${q.answer}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -120,7 +163,7 @@ export default function SearchDialog({ open, onOpenChange }: SearchDialogProps) 
               })}
             </div>
           ) : (
-            <div className="py-12 text-center text-muted-foreground text-sm">
+            <div className="py-12 text-center text-muted-foreground text-sm" role="status">
               输入关键词搜索题目
             </div>
           )}

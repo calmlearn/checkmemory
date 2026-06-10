@@ -4,6 +4,7 @@ import "./globals.css"
 import Navbar from "@/components/Navbar"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeProvider } from "@/lib/theme"
+import { THEME_IDS } from "@/lib/theme-config"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,8 +21,6 @@ export const metadata: Metadata = {
   description: "上传文档，AI自动提取知识点，随机测验帮你巩固记忆",
 }
 
-// 可用的主题列表，与 theme.ts 保持一致
-const THEMES = ["blue", "green", "orange", "pink", "purple"]
 
 export default function RootLayout({
   children,
@@ -42,8 +41,8 @@ export default function RootLayout({
               (function() {
                 try {
                   var theme = localStorage.getItem('app-theme');
-                  var themes = ${JSON.stringify(THEMES)};
-                  if (theme && themes.indexOf(theme) !== -1) {
+                  var ids = ${JSON.stringify(THEME_IDS)};
+                  if (theme && ids.indexOf(theme) !== -1) {
                     document.documentElement.setAttribute('data-theme', theme);
                   }
                 } catch(e) {}
@@ -53,9 +52,16 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-background">
+        {/* 跳到主内容的链接（键盘用户可见） */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-lg focus:text-sm focus:font-medium"
+        >
+          跳到主要内容
+        </a>
         <ThemeProvider>
           <Navbar />
-          <main className="flex-1 container mx-auto px-4 py-6">
+          <main id="main-content" className="flex-1 container mx-auto px-4 py-6">
             {children}
           </main>
           <footer className="border-t py-4 text-center text-sm text-muted-foreground">

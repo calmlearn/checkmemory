@@ -13,18 +13,18 @@ export default function ThemeSwitcher() {
 
   return (
     <Popover>
-      <PopoverTrigger className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-9 w-9 rounded-full bg-transparent hover:bg-accent hover:text-accent-foreground transition-colors outline-none">
-        <Palette className="h-4 w-4" />
+      <PopoverTrigger className="inline-flex shrink-0 items-center justify-center border shadow-xs cursor-pointer h-11 w-11 rounded-full bg-transparent hover:bg-accent hover:text-accent-foreground transition-colors outline-none" aria-label="切换主题">
+        <Palette className="h-5 w-5" />
       </PopoverTrigger>
-      <PopoverContent className="w-48" align="end">
-        <div className="space-y-2">
+      <PopoverContent className="w-56" align="end">
+        <div className="space-y-3">
           <p className="text-sm font-medium text-muted-foreground px-1">切换主题</p>
           <div className="grid grid-cols-5 gap-2">
             {themes.map((theme) => (
               <button
                 key={theme.id}
                 className={`
-                  w-8 h-8 rounded-full border-2 transition-all cursor-pointer
+                  w-11 h-11 rounded-full border-2 transition-all cursor-pointer mx-auto
                   ${currentTheme === theme.id
                     ? "border-foreground scale-110 ring-2 ring-offset-2 ring-offset-background"
                     : "border-transparent hover:scale-110"
@@ -32,7 +32,7 @@ export default function ThemeSwitcher() {
                 `}
                 style={{ backgroundColor: theme.color }}
                 onClick={() => setTheme(theme.id)}
-                title={theme.name}
+                aria-label={`切换到${theme.name}主题`}
               />
             ))}
           </div>

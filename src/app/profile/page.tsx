@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { User, LogOut, Mail, Shield, Loader2 } from "lucide-react"
+import { User, LogOut, Mail, Shield } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { createSupabaseBrowserClient } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
 
@@ -33,7 +34,30 @@ export default function ProfilePage() {
   }
 
   if (loading) {
-    return <div className="max-w-md mx-auto py-20 text-center"><Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" /></div>
+    return (
+      <div className="max-w-md mx-auto space-y-6 py-10">
+        <div className="text-center space-y-2">
+          <Skeleton className="h-16 w-16 rounded-full mx-auto" />
+          <Skeleton className="h-7 w-24 mx-auto" />
+        </div>
+        <Card>
+          <CardContent className="py-6 space-y-4">
+            <Skeleton className="h-5 w-20" />
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <Skeleton className="h-4 w-8" />
+                <Skeleton className="h-4 w-36" />
+              </div>
+              <div className="flex justify-between">
+                <Skeleton className="h-4 w-8" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Skeleton className="h-9 w-full rounded-lg" />
+      </div>
+    )
   }
 
   return (
