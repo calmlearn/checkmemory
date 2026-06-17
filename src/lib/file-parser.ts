@@ -74,22 +74,29 @@ function getFileType(fileName: string): FileType | null {
 
 /**
  * 解析 PDF 文件（动态加载 pdfjs-dist，避免 SSR 报错）
+ *
+ * Worker 说明：
+ * - pdfjs-dist v6 创建的是 Module Worker（{type: "module"}）
+ * - 移动端 Safari 对 Module Worker 的 MIME 类型检查严格，
+ *   .mjs 文件部署后可能被 CDN 返回错误的 Content-Type
+ * - 将 worker 文件复制到 public/ 并重命名为 .js，
+ *   确保所有环境下都有正确的 JavaScript MIME 类型
+ * - 详见 next.config.ts 中的配置
  */
 async function parsePDF(arrayBuffer: ArrayBuffer): Promise<string> {
   const pdfjs = await import("pdfjs-dist")
 
-  // 配置 worker（仅在浏览器环境）
+  // 通过 public/ 目录加载 worker，避免 MIME 类型问题
   if (typeof window !== "undefined") {
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url
-    ).toString()
+    pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js"
   }
 
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise
-  const pageTexts: string[] = []
 
-  for (let i = 1; i <= pdf.numPages; i++) {
+  const pageTexts: string[] = []
+  const totalPages = pdf.numPages
+
+  for (let i = 1; i <= totalPages; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
     const text = content.items.map((item: any) => item.str).join(" ")

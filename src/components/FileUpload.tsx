@@ -75,15 +75,20 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
         createdAt: new Date(),
       })
 
-      // 3. 调用 AI 提取问题和答案
+      // 3. 调用 AI 提取问题和答案（120s 超时，移动端网络可能较慢）
+      const extractAbort = new AbortController()
+      const extractTimeout = setTimeout(() => extractAbort.abort(), 120_000)
+
       const response = await fetch("/api/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: extractAbort.signal,
         body: JSON.stringify({
           text: parseResult.text,
           title: parseResult.title,
         }),
       })
+      clearTimeout(extractTimeout)
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ error: "AI 提取失败，请稍后重试" }))
@@ -126,7 +131,19 @@ export default function FileUpload({ onSuccess }: FileUploadProps) {
       onSuccess?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : "处理失败"
-      toast.error("处理失败", { description: message })
+      const detail = error instanceof Error ? error.stack || "" : ""
+      console.error("文件提取失败:", message, detail, {
+        fileName: currentFile?.name,
+        fileSize: currentFile?.size,
+      })
+      // 区分超时错误，给更友好的提示
+      if (error instanceof DOMException && error.name === "AbortError") {
+        toast.error("处理超时", {
+          description: "提取耗时较长，请在网络稳定的环境下重试，或尝试较小的文件",
+        })
+      } else {
+        toast.error("处理失败", { description: message })
+      }
     } finally {
       setIsProcessing(false)
       setProgressText("")

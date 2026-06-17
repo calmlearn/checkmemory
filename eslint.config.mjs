@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 第三方库文件
+    "public/pdf.worker.min.js",
   ]),
 ]);
 
